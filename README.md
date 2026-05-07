@@ -191,7 +191,7 @@ Here's a focused comparison table of the main CLI coding agents, filtered for yo
 - **Plandex** — underrated, the diff sandbox means changes are staged before touching your files, very structured
 
 
-## How to setup Claude code with cusom model
+## How to setup Claude code with custom model
 
 Claude code can be installed based on the docs: https://use-code.com/index
 
@@ -213,3 +213,15 @@ Detailed reading is available at:
 - https://jonathansblog.co.uk/using-claude-code-with-local-llm-models-the-complete-guide
 - https://code.claude.com/docs/en/model-config
 - https://use-code.com/index
+
+## How to setup Codex with custom model (NOT COMPLETE)
+
+Check the official repo for the latest release: https://github.com/openai/codex/
+
+On Linux, look for `codex-x86_64-unknown-linux-musl.tar.gz` and unzip it. It will give you a binary file that you can move to `~/.local/bin/` folder so you can access it via terminal (given that the `~/.local/bin/` is added to your PATH environment variable).
+
+⚠️ Codex works with `/response` endpoint now. The `/chat` does not function:
+```bash
+Error loading config.toml: `wire_api = "chat"` is no longer supported.
+How to fix: set `wire_api = "responses"` in your provider config.
+```
