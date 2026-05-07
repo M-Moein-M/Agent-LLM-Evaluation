@@ -189,3 +189,27 @@ Here's a focused comparison table of the main CLI coding agents, filtered for yo
 - **Claude Code** — most mature opinionated workflow, best SWE-bench scores, least wiggle room by design
 - **Aider** — battle-tested, the architect/editor split is a genuinely fixed workflow that's hard to break, excellent git integration
 - **Plandex** — underrated, the diff sandbox means changes are staged before touching your files, very structured
+
+
+## How to setup Claude code with cusom model
+
+Claude code can be installed based on the docs: https://use-code.com/index
+
+Afterwards, a file in `~/.claude/settings.json` should be created with the following content. The settings values should be configured according to available models, API key, and endpoint.
+
+```json
+{
+  "env": {
+    "CLAUDE_CODE_ATTRIBUTION_HEADER": "0",
+    "ANTHROPIC_MODEL": "Qwen/Qwen3.6-35B-A3B-FP8",
+    "ANTHROPIC_BASE_URL": "https://gateway.example.org/api/llmgw/",
+    "ANTHROPIC_AUTH_TOKEN": "sk-REDACTED..."
+  },
+  "theme": "dark"
+}
+```
+
+Detailed reading is available at:
+- https://jonathansblog.co.uk/using-claude-code-with-local-llm-models-the-complete-guide
+- https://code.claude.com/docs/en/model-config
+- https://use-code.com/index
