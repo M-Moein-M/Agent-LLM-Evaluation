@@ -17,8 +17,7 @@ From: ubuntu:latest
         libnuma-dev \
         && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-	curl -fsSL https://claude.ai/install.sh | bash
-    
+	curl -fsSL https://claude.ai/install.sh | bash    
     
 
 %environment

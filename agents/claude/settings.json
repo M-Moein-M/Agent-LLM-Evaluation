@@ -1,0 +1,10 @@
+{
+	"env": {
+		"CLAUDE_CODE_ATTRIBUTION_HEADER": "0",
+		"ANTHROPIC_MODEL": "Qwen/Qwen3.6-35B-A3B-FP8",
+		"ANTHROPIC_BASE_URL": "https://gateway.example.org/api/llmgw/",
+		"ANTHROPIC_AUTH_TOKEN": "sk-REDACTED"
+	},
+	"autoUpdatesChannel": "latest",
+	"theme": "dark"
+}
