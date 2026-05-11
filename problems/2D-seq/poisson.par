@@ -1,0 +1,22 @@
+# Problem specific Data:
+# ---------------------
+
+name poisson
+
+# Geometry Data:
+# -------------
+
+xlength    1.0		# domain size in x-direction
+ylength    1.0		# domain size in y-direction
+imax       300		# number of interior cells in x-direction
+jmax       300		# number of interior cells in y-direction
+
+# Pressure Iteration Data:
+# -----------------------
+
+itermax  1000000		# maximal number of pressure iteration in one time step
+eps      0.000001	# stopping tolerance for pressure iteration
+rho      0.99999		# relaxation parameter for SOR iteration
+omg      1.2		# relaxation parameter for SOR iteration
+
+#===============================================================================
