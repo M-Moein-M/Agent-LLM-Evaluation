@@ -16,3 +16,5 @@ build/
 
 .python-version
 .DS_Store
+
+*.sif

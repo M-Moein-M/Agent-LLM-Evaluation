@@ -1,0 +1,25 @@
+Bootstrap: docker
+From: ubuntu:latest
+
+# run as:   APPTAINER_CACHEDIR=/home/${GROUP}/${USER}/containers/cache apptainer build --force agent.sif agent.def
+
+%post
+    # ── System packages ────────────────────────────────────────────────────────
+    apt-get update -y && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        git \
+        curl \
+        wget \
+        tree \
+        build-essential \
+        libssl-dev \
+        libffi-dev \
+        libnuma-dev \
+        && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+	curl -fsSL https://claude.ai/install.sh | bash
+    
+    
+
+%environment
+	export PATH=/usr/local/bin:/root/.local/bin:$PATH

@@ -1,0 +1,22 @@
+Bootstrap: docker
+From: node:20-slim
+
+# run as:   APPTAINER_CACHEDIR=/home/${GROUP}/${USER}/containers/cache apptainer build --force agent.sif agent.def
+
+%post
+    # ── System packages ────────────────────────────────────────────────────────
+    apt-get update -y && apt-get install -y --no-install-recommends \
+        git \
+        curl \
+        wget \
+        tree \
+        build-essential \
+        libssl-dev \
+        libffi-dev \
+        libnuma-dev \
+        && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+	npm install -g @mariozechner/pi-coding-agent
+
+%environment
+	export PATH=/usr/local/bin:$PATH

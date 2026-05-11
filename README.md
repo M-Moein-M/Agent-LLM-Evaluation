@@ -150,6 +150,7 @@ This project extends ParEval's task library and drivers where useful, but builds
 - **Agent sandboxing:** Giving real agents access to real cluster resources is a security and cost challenge. A clean isolation layer is needed before this can be opened to third parties.
 - **Scope creep:** Covering all execution models at launch is risky. The plan is to phase: nail MPI + CUDA depth first, then add SYCL, HIP, and Fortran in subsequent releases.
 - **LLM coverage of newer models:** SYCL and Fortran are underrepresented in training data — signal may be sparse at first.
+- **Benchmark saturation:** With better coding agents and LLMs, the performance of all will plateu and there would not be a meaningful difference between the models.
 
 ---
 
@@ -167,6 +168,7 @@ Early design phase. Immediate next steps:
 - Mix of local and remote model
 - How to optimize the quality
 - How to optimize for efficient token usage
+- How access to library docs (OpenMP, ...) affect the performance
 
 ---
 
