@@ -37,8 +37,15 @@ for PROBLEM in "$PROBLEM_DIR"/*; do
         "$IMAGE" /bin/bash -l /host.sh /problem
 
     mkdir -p "$TRACE_DIR"
-    rsync -a \
+    TEMPDIR=$(mktemp -d)
+    # first creates empty folders (sadly)
+    rsync -a --prune-empty-dirs \
         --compare-dest="$PROBLEM/" \
         --exclude='.pi/agent/' \
-        "$WORK_DIR/" "$TRACE_DIR/"
+        "$WORK_DIR/" "$TEMPDIR/"
+    # second skips empty folders the changed files
+    rsync -a --prune-empty-dirs \
+        --compare-dest="$PROBLEM/" \
+        --exclude='.pi/agent/' \
+        "$TEMPDIR/" "$TRACE_DIR/"
 done
