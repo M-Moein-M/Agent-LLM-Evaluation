@@ -30,12 +30,9 @@ for PROBLEM in "$PROBLEM_DIR"/*; do
     mkdir -p "$WORK_DIR"
     cp -a "$PROBLEM"/. "$WORK_DIR"/
 
-    mkdir -p "$WORK_DIR/.pi/agent"
-    cp "$MODELS_CONFIG" "$WORK_DIR/.pi/agent/"
-
     docker run --rm \
         -v "$WORK_DIR:/problem" \
-        -v "$MODELS_CONFIG:/models.json:ro" \
+        -v "$MODELS_CONFIG:/root/.pi/agent/models.json:ro" \
         -v "$CONTAINER_SCRIPT:/host.sh:ro" \
         "$IMAGE" /bin/bash -l /host.sh /problem
 

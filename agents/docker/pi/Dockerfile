@@ -17,4 +17,7 @@ RUN apt-get update -y && apt-get install -y --no-install-recommends \
 
 RUN npm install -g @mariozechner/pi-coding-agent
 
+# Ensure agent config directory exists for bind mount target.
+RUN mkdir -p /root/.pi/agent
+
 ENV PATH=/usr/local/bin:$PATH
