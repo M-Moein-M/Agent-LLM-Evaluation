@@ -11,6 +11,8 @@ RUN apt-get update -y && apt-get install -y --no-install-recommends \
     libssl-dev \
     libffi-dev \
     libnuma-dev \
+    rsync \
+    jq \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 RUN npm install -g @mariozechner/pi-coding-agent

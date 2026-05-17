@@ -2,31 +2,46 @@
 
 ROOT=/home/horatio/projects/nhr-agent-evaluation
 PROBLEM_DIR="$ROOT/problems"
+TRACE_ROOT="$ROOT/traces"
 DOCKERFILE="$ROOT/agents/docker/pi/Dockerfile"
 IMAGE="agent-eval-pi:latest"
 CONTAINER_SCRIPT="$ROOT/agents/docker/pi/guest.sh"
 MODELS_CONFIG="$ROOT/agents/apptainer/pi/models.json"
 
+DATE_TAG=$(date +%Y%m%d-%H%M%S)
+
 if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
     docker build -t "$IMAGE" -f "$DOCKERFILE" "$(dirname "$DOCKERFILE")"
 fi
 
-EVAL_TMPDIR=$(mktemp -d)
-trap 'rm -rf "$EVAL_TMPDIR"' EXIT
-cp -r "$PROBLEM_DIR"/* "$EVAL_TMPDIR"/
+WORK_ROOT=$(mktemp -d)
+trap 'rm -rf "$WORK_ROOT"' EXIT
 
-for PROBLEM in "$EVAL_TMPDIR"/*; do
+for PROBLEM in "$PROBLEM_DIR"/*; do
     if [[ ! -d "$PROBLEM" ]]; then
         continue
     fi
 
-    echo "Evaluating problem: $PROBLEM"
-    mkdir -p "$PROBLEM/.pi/agent"
-    cp "$MODELS_CONFIG" "$PROBLEM/.pi/agent/"
+    PROBLEM_NAME=$(basename "$PROBLEM")
+    TRACE_DIR="$TRACE_ROOT/$PROBLEM_NAME/pi/$DATE_TAG"
+    WORK_DIR="$WORK_ROOT/$PROBLEM_NAME"
+
+    echo "Evaluating problem: $PROBLEM_NAME"
+    mkdir -p "$WORK_DIR"
+    cp -a "$PROBLEM"/. "$WORK_DIR"/
+
+    mkdir -p "$WORK_DIR/.pi/agent"
+    cp "$MODELS_CONFIG" "$WORK_DIR/.pi/agent/"
 
     docker run --rm \
-        -v "$PROBLEM:/problem" \
+        -v "$WORK_DIR:/problem" \
         -v "$MODELS_CONFIG:/models.json:ro" \
         -v "$CONTAINER_SCRIPT:/host.sh:ro" \
         "$IMAGE" /bin/bash -l /host.sh /problem
+
+    mkdir -p "$TRACE_DIR"
+    rsync -a \
+        --compare-dest="$PROBLEM/" \
+        --exclude='.pi/agent/' \
+        "$WORK_DIR/" "$TRACE_DIR/"
 done
