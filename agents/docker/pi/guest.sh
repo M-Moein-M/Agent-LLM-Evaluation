@@ -13,4 +13,4 @@ tree /root/.pi -a
 # Non-interactive mode (process and exit)
 #      pi -p "List all .ts files in src/"
 pi --list-models
-pi -p --model local/llama3.1:8b "finish the code in main.cpp" 2>&1 | tee ./agent.log
+pi -p  --mode json --model Qwen/Qwen3.6-35B-A3B-FP8 "write a OBSERVATION.md file that briefly explains this repo" | tee ./agent.log

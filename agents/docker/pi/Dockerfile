@@ -6,6 +6,7 @@ RUN apt-get update -y && apt-get install -y --no-install-recommends \
     curl \
     wget \
     tree \
+    ca-certificates \
     build-essential \
     libssl-dev \
     libffi-dev \

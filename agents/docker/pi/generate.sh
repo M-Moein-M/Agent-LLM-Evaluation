@@ -1,10 +1,10 @@
 #! /bin/bash -l
 
-ROOT=/home/${GROUP}/${USER}/agent-evaluation-nhr
+ROOT=/home/horatio/projects/nhr-agent-evaluation
 PROBLEM_DIR="$ROOT/problems"
 DOCKERFILE="$ROOT/agents/docker/pi/Dockerfile"
 IMAGE="agent-eval-pi:latest"
-CONTAINER_SCRIPT="$ROOT/agents/docker/pi/host.sh"
+CONTAINER_SCRIPT="$ROOT/agents/docker/pi/guest.sh"
 MODELS_CONFIG="$ROOT/agents/apptainer/pi/models.json"
 
 if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
@@ -28,5 +28,5 @@ for PROBLEM in "$EVAL_TMPDIR"/*; do
         -v "$PROBLEM:/problem" \
         -v "$MODELS_CONFIG:/models.json:ro" \
         -v "$CONTAINER_SCRIPT:/host.sh:ro" \
-        "$IMAGE" /host.sh /problem
+        "$IMAGE" /bin/bash -l /host.sh /problem
 done
