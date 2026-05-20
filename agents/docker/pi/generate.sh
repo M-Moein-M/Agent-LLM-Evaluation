@@ -17,7 +17,8 @@ fi
 WORK_ROOT=$(mktemp -d)
 trap 'rm -rf "$WORK_ROOT"' EXIT
 
-for PROBLEM in "$PROBLEM_DIR"/*; do
+# for PROBLEM in "$PROBLEM_DIR"/*; do
+PROBLEM="$PROBLEM_DIR/MD-Bench" # for testing
     if [[ ! -d "$PROBLEM" ]]; then
         continue
     fi
@@ -48,4 +49,6 @@ for PROBLEM in "$PROBLEM_DIR"/*; do
         --compare-dest="$PROBLEM/" \
         --exclude='.pi/agent/' \
         "$TEMPDIR/" "$TRACE_DIR/"
-done
+    
+    diff -ru --exclude='.git' --color=always "$PROBLEM/" "$WORK_DIR/" | tee "$TRACE_DIR/changed_diff.txt"
+# done
