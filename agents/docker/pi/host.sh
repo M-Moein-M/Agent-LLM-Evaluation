@@ -18,7 +18,7 @@ WORK_ROOT=$(mktemp -d)
 trap 'rm -rf "$WORK_ROOT"' EXIT
 
 # for PROBLEM in "$PROBLEM_DIR"/*; do
-PROBLEM="$PROBLEM_DIR/MD-Bench" # for testing
+PROBLEM="$PROBLEM_DIR/RabbitCT" # for testing
     if [[ ! -d "$PROBLEM" ]]; then
         continue
     fi
