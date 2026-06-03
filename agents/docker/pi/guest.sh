@@ -18,5 +18,5 @@ tree /root/.pi -a
 # Non-interactive mode (process and exit)
 #      pi -p "List all .ts files in src/"
 pi --list-models
-pi -p  --mode json --model Qwen/Qwen3.6-35B-A3B-FP8 "$PROMPT" | jq -c 'select(.type == "agent_end")' | tee ~/agent.jsonl
+pi -p  --mode json --model "deepseek-ai/DeepSeek-V4-Flash" "$PROMPT" | jq -c 'select(.type == "agent_end")' | tee ~/agent.jsonl
 cp ~/agent.jsonl "$PROBLEM_DIR"

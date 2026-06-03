@@ -1,6 +1,6 @@
 #! /bin/bash -l
 
-ROOT=/home/horatio/projects/nhr-agent-evaluation
+ROOT="$(pwd)"
 PROBLEM_DIR="$ROOT/problems"
 TRACE_ROOT="$ROOT/traces"
 DOCKERFILE="$ROOT/agents/docker/pi/Dockerfile"
@@ -9,6 +9,9 @@ CONTAINER_SCRIPT="$ROOT/agents/docker/pi/guest.sh"
 MODELS_CONFIG="$ROOT/agents/apptainer/pi/models.json"
 
 DATE_TAG=$(date +%Y%m%d-%H%M%S)
+echo "ROOT directory was set to $ROOT"
+[[ -d "$PROBLEM_DIR" ]] || { echo "ERROR: Run from repo root. Missing $PROBLEM_DIR" >&2; exit 1; }
+[[ -f "$DOCKERFILE" ]] || { echo "ERROR: Run from repo root. Missing $DOCKERFILE" >&2; exit 1; }
 
 if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
     docker build -t "$IMAGE" -f "$DOCKERFILE" "$(dirname "$DOCKERFILE")"
@@ -18,7 +21,7 @@ WORK_ROOT=$(mktemp -d)
 trap 'rm -rf "$WORK_ROOT"' EXIT
 
 # for PROBLEM in "$PROBLEM_DIR"/*; do
-PROBLEM="$PROBLEM_DIR/RabbitCT" # for testing
+PROBLEM="$PROBLEM_DIR/RabbitCT" # Take RabbitCT for testing
     if [[ ! -d "$PROBLEM" ]]; then
         continue
     fi
