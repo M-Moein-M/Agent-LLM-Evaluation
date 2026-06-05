@@ -116,6 +116,71 @@ A sandboxed HPC environment that wraps real CLI agents and exposes them to bench
 
 ---
 
+## Current implementation
+
+Layers 2 and 3 above are the target design. What is built today is a working
+pass@1 harness for GPU kernel problems (RabbitCT first), organized around one
+principle: **separate side effects from judgment.**
+
+- **Container (bash) = side effects.** The agent solves the problem inside a
+  GPU container, then the harness *replays the agent's own build/run commands*
+  and captures **raw evidence** to files. It interprets nothing.
+- **Host (Python) = judgment over files.** A separate, re-runnable step parses
+  that evidence, applies per-problem thresholds, and decides pass/fail. It needs
+  only `python3` — no compiler, no GPU — so re-tuning a threshold recomputes
+  pass@1 over existing traces at zero GPU cost.
+
+This decoupling means the expensive GPU run happens once, while the verdict can
+be re-derived cheaply and audited independently of what the agent self-reported.
+
+### Pipeline
+
+```
+host.sh        loop over models × rounds × problems; run container with --gpus all
+  guest.sh     run agent → it writes source + solution.json (its build/run cmds)
+  guest.sh     replay build/run; capture raw evidence → .eval/
+  host.sh      rsync trace (agent diff + .eval/)
+host.sh →
+  check_pass.py  judge each round against checks/<PROBLEM>/check.py → pass_result.json
+collect_results.py  aggregate → pass@1 per model + per-stage failure breakdown
+```
+
+### Components
+
+| Path | Role |
+|---|---|
+| `agents/docker/pi/host.sh` | Orchestrator: builds the image, loops, runs containers, rsyncs traces, invokes the host-side checks. |
+| `agents/docker/pi/guest.sh` | In-container: runs the agent, replays its `solution.json` commands, captures evidence. **No interpretation.** |
+| `problems/<P>/PROMPT.md` | Task description + the `solution.json` contract the agent must produce. |
+| `checks/` | Self-contained judging subsystem, kept outside the agent workspace so it can't be gamed. |
+| `checks/eval_lib.py` | Shared `ProblemCheck` base + evidence accessors (`facts()`, `log_value()`, `gpu_stats()`). |
+| `checks/<P>/check.py` | Per-problem pass criteria: ordered stages + tunable threshold constants. |
+| `checks/check_pass.py` | Host-side driver: runs each problem's check over a trace → `pass_result.json`. |
+| `checks/collect_results.py` | Aggregates verdicts → pass@1 per model and which stages fail. |
+
+### Evidence captured per round (`.eval/`)
+
+- `facts.json` — raw receipts: build/run commands, exit codes, timings (no MSE, no verdict)
+- `build.log`, `run.log` — untouched command output
+- `gpu_info.txt` — `nvidia-smi -L` device identity
+- `gpu_usage.csv` — GPU utilization sampled at 250 ms during the run
+- `pass_result.json` — the verdict: overall `passed` + per-stage results (written host-side)
+
+### Pass criteria per problem
+
+Each problem defines a `checks/<P>/check.py` with a `Check` subclass of
+`ProblemCheck`. Stages run in order; `build`/`run` are *fatal* (if they fail,
+downstream stages are `skipped`, not failed — preserving "which stage broke").
+Thresholds are constants at the top of the file, so re-running `check_pass.py`
+after editing one re-judges existing traces with no GPU re-run. RabbitCT checks
+`build → run → mse → gpu` (MSE under threshold against the reference volume, and
+GPU utilization above a floor to catch CPU fallback).
+
+> Operational details — running the eval, configuration env vars, and adding new
+> problems — are in [EVAL.md](EVAL.md).
+
+---
+
 ## Hardware architectures for local deployment
 - Apple Studio M1 Max
 - AMD MI300X
