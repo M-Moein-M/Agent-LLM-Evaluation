@@ -6,7 +6,11 @@ TRACE_ROOT="$ROOT/traces"
 DOCKERFILE="$ROOT/agents/docker/pi/Dockerfile"
 IMAGE="agent-eval-pi:latest"
 CONTAINER_SCRIPT="$ROOT/agents/docker/pi/guest.sh"
-MODELS_CONFIG="$ROOT/agents/apptainer/pi/models.json"
+MODELS_CONFIG="${MODELS_CONFIG:-$ROOT/agents/apptainer/pi/models.json}"
+EVAL_ROUNDS="${EVAL_ROUNDS:-20}"
+EVAL_PROBLEMS="${EVAL_PROBLEMS:-RabbitCT}"
+EVAL_SIZE="${EVAL_SIZE:-256}"
+EVAL_VARIANT="${EVAL_VARIANT:-LolaBunnyGPU}"
 
 DATE_TAG=$(date +%Y%m%d-%H%M%S)
 echo "ROOT directory was set to $ROOT"
@@ -20,38 +24,70 @@ fi
 WORK_ROOT=$(mktemp -d)
 trap 'rm -rf "$WORK_ROOT"' EXIT
 
-# for PROBLEM in "$PROBLEM_DIR"/*; do
-PROBLEM="$PROBLEM_DIR/RabbitCT" # Take RabbitCT for testing
-    if [[ ! -d "$PROBLEM" ]]; then
-        continue
+if [ -z "$EVAL_MODELS" ]; then
+    if command -v jq >/dev/null 2>&1; then
+        EVAL_MODELS=$(jq -r '.providers[].models[].id' "$MODELS_CONFIG" | paste -sd, -)
+    else
+        echo "ERROR: EVAL_MODELS is not set and jq is unavailable to parse $MODELS_CONFIG" >&2
+        exit 1
     fi
+fi
 
-    PROBLEM_NAME=$(basename "$PROBLEM")
-    TRACE_DIR="$TRACE_ROOT/$PROBLEM_NAME/pi/$DATE_TAG"
-    WORK_DIR="$WORK_ROOT/$PROBLEM_NAME"
+IFS=',' read -r -a MODELS <<< "$EVAL_MODELS"
+IFS=',' read -r -a PROBLEMS <<< "$EVAL_PROBLEMS"
 
-    echo "Evaluating problem: $PROBLEM_NAME"
-    mkdir -p "$WORK_DIR"
-    cp -a "$PROBLEM"/. "$WORK_DIR"/
+for MODEL in "${MODELS[@]}"; do
+    MODEL_TAG=${MODEL//\//_}
+    for ROUND in $(seq 1 "$EVAL_ROUNDS"); do
+        for PROBLEM_NAME in "${PROBLEMS[@]}"; do
+            PROBLEM="$PROBLEM_DIR/$PROBLEM_NAME"
+            if [[ ! -d "$PROBLEM" ]]; then
+                echo "Skipping missing problem: $PROBLEM" >&2
+                continue
+            fi
 
-    docker run --rm \
-        -v "$WORK_DIR:/problem" \
-        -v "$MODELS_CONFIG:/root/.pi/agent/models.json:ro" \
-        -v "$CONTAINER_SCRIPT:/host.sh:ro" \
-        "$IMAGE" /bin/bash -l /host.sh /problem
+            TRACE_DIR="$TRACE_ROOT/$PROBLEM_NAME/$MODEL_TAG/$DATE_TAG/round-$ROUND"
+            WORK_DIR="$WORK_ROOT/$PROBLEM_NAME"
 
-    mkdir -p "$TRACE_DIR"
-    TEMPDIR=$(mktemp -d)
-    # first creates empty folders (sadly)
-    rsync -a --prune-empty-dirs \
-        --compare-dest="$PROBLEM/" \
-        --exclude='.pi/agent/' \
-        "$WORK_DIR/" "$TEMPDIR/"
-    # second skips empty folders the changed files
-    rsync -a --prune-empty-dirs \
-        --compare-dest="$PROBLEM/" \
-        --exclude='.pi/agent/' \
-        "$TEMPDIR/" "$TRACE_DIR/"
-    
-    diff -ru --exclude='.git' --color=always "$PROBLEM/" "$WORK_DIR/" | tee "$TRACE_DIR/changed_diff.txt"
-# done
+            echo "Evaluating problem: $PROBLEM_NAME | model: $MODEL | round: $ROUND"
+            mkdir -p "$WORK_DIR"
+            rm -rf "$WORK_DIR"/*
+            cp -a "$PROBLEM"/. "$WORK_DIR"/
+
+            docker run --rm \
+                --gpus all \
+                -e "EVAL_MODEL=$MODEL" \
+                -e "EVAL_ROUND=$ROUND" \
+                -e "EVAL_SIZE=$EVAL_SIZE" \
+                -e "EVAL_VARIANT=$EVAL_VARIANT" \
+                -v "$WORK_DIR:/problem" \
+                -v "$MODELS_CONFIG:/root/.pi/agent/models.json:ro" \
+                -v "$CONTAINER_SCRIPT:/host.sh:ro" \
+                "$IMAGE" /bin/bash -l /host.sh /problem
+
+            mkdir -p "$TRACE_DIR"
+            TEMPDIR=$(mktemp -d)
+            rsync -a --prune-empty-dirs \
+                --compare-dest="$PROBLEM/" \
+                --exclude='.pi/agent/' \
+                "$WORK_DIR/" "$TEMPDIR/"
+            rsync -a --prune-empty-dirs \
+                --compare-dest="$PROBLEM/" \
+                --exclude='.pi/agent/' \
+                "$TEMPDIR/" "$TRACE_DIR/"
+
+            diff -ru --exclude='.git' --color=always "$PROBLEM/" "$WORK_DIR/" | tee "$TRACE_DIR/changed_diff.txt"
+        done
+    done
+done
+
+# ---------------------------------------------------------------------------
+# Host-side pass judgment over the captured evidence (no GPU, re-runnable).
+# Re-run any time after tuning a threshold in checks/<PROBLEM>/check.py:
+#     python "$ROOT/checks/check_pass.py" --traces "$TRACE_ROOT"
+# ---------------------------------------------------------------------------
+if command -v python3 >/dev/null 2>&1; then
+    python3 "$ROOT/checks/check_pass.py" --traces "$TRACE_ROOT"
+else
+    echo "WARN: python3 not found on host — skipping pass checks. Run checks/check_pass.py manually." >&2
+fi
