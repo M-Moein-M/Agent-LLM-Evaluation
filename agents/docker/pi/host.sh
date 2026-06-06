@@ -65,6 +65,21 @@ for MODEL in "${MODELS[@]}"; do
                 -v "$CONTAINER_SCRIPT:/host.sh:ro" \
                 "$IMAGE" /bin/bash -l /host.sh /problem
 
+            # The eval container runs as root, so everything it wrote into the
+            # bind-mounted workdir (.eval/, build/, solution.json, ...) is owned
+            # by root:root. Hand it back to the invoking user via a throwaway
+            # root container. Two reasons this is needed:
+            #   1. The EXIT-trap cleanup (rm -rf "$WORK_ROOT") runs as this user
+            #      and otherwise can't delete root-owned files -> "Permission
+            #      denied" spam and leftover /tmp dirs.
+            #   2. It re-touches every file through a container write, forcing
+            #      the bind mount to flush so the host-side rsync below reliably
+            #      sees the just-written .eval/ evidence (otherwise traces/ can
+            #      end up with only changed_diff.txt and check_pass finds nothing).
+            docker run --rm \
+                -v "$WORK_DIR:/problem" \
+                "$IMAGE" chown -R "$(id -u):$(id -g)" /problem
+
             mkdir -p "$TRACE_DIR"
             TEMPDIR=$(mktemp -d)
             rsync -a --prune-empty-dirs \
