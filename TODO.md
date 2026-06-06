@@ -2,16 +2,27 @@
 
 ## 1. agent.jsonl is too big
 
-- **Status:** Open
+- **Status:** Resolved (2026-06-06) — `guest.sh` now filters the event stream before
+  `tee`, dropping the streaming delta events `message_update` and
+  `tool_execution_update`. On the real 272MB Qwen3.6/RabbitCT trace this cut the file
+  to **1.4MB (99.5% reduction)**: 28,819 → 797 lines, retaining all 199 message_end,
+  104 tool_execution_end, turn boundaries, and the full `agent_end` transcript.
 - **Severity:** High
 - **File:** [guest.sh:29](agents/docker/pi/guest.sh#L29)
 - **Symptom:** One run (Qwen3.6-35B, RabbitCT) produced a ~200MB `agent.jsonl` file. Over 20 rounds × multiple models this will eat disk fast.
 - **Context:** We switched from `agent_end`-only to full event stream (`tee ~/agent.jsonl`).
-- **Options:**
-  1. Revert to `agent_end` only (loss of tool-call granularity, but 10-50MB per run)
-  2. Keep full stream but gzip it on-the-fly (`tee ~/agent.jsonl.gz`), decompress for analysis
-  3. Keep full stream but filter to `agent` + `agent_end` events only (drop tool_call/tool_result detail, keep the summary messages)
-- **Decision:** TBD —权衡 between debuggability and disk space.
+- **Root cause (measured):** `message_update` was **99.7%** of the file (282MB / 27,828
+  events, avg 10KB each). It fires per streaming token and re-serializes the *entire*
+  accumulated message each time → quadratic. Every byte is already captured losslessly
+  in the matching `message_end` (and again in `agent_end`).
+- **Decision:** Refined option 3 — filter out the `*_update` deltas with
+  `grep -Ev '"type":"(message_update|tool_execution_update)"'` in the pipe. Keeps full
+  tool-call granularity (unlike reverting to `agent_end` only) and never writes the
+  wasted bytes at all (unlike gzipping the full stream). Nothing downstream reads
+  `agent.jsonl` (judging uses `.eval/facts.json` + logs), so the cut is lossless for the
+  harness. `grep` is wrapped in `{ ... || true; }` so an empty agent run still hits the
+  fail-handling path under `set -euo pipefail`. If even tighter is wanted later, gzip can
+  be layered on top.
 
 ## 2. nvidia-smi log resolution
 

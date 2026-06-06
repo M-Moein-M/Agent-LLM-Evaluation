@@ -26,7 +26,14 @@ tree -a
 tree /root/.pi -a
 
 pi --list-models
-pi -p --mode json --model "$EVAL_MODEL" "$PROMPT" 2>/dev/null | tee ~/agent.jsonl
+# Drop the high-frequency streaming delta events before persisting the trace.
+# `message_update` / `tool_execution_update` re-serialize the *entire* accumulated
+# message on every token, which is quadratic and was ~99.7% of a 272MB trace.
+# The final content is preserved losslessly in message_end / tool_execution_end /
+# agent_end. `|| true` keeps the empty-output fail path working under pipefail.
+pi -p --mode json --model "$EVAL_MODEL" "$PROMPT" 2>/dev/null \
+	| { grep --line-buffered -Ev '"type":"(message_update|tool_execution_update)"' || true; } \
+	| tee ~/agent.jsonl
 cp ~/agent.jsonl "$PROBLEM_DIR"
 
 # ---------------------------------------------------------------------------
