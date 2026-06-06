@@ -158,6 +158,8 @@ collect_results.py  aggregate → pass@1 per model + per-stage failure breakdown
 | `checks/check_pass.py` | Host-side driver: runs each problem's check over a trace → `pass_result.json`. |
 | `checks/collect_results.py` | Aggregates verdicts → pass@1 per model and which stages fail. |
 
+*✅Tip*: If you ever change the Dockerfile again, rebuild manually with the same --no-cache command, since the auto-build won't re-trigger on an existing tag. Run `docker build --pull --no-cache -t agent-eval-pi:latest -f agents\docker\pi\Dockerfile agents\docker\pi`
+
 ### Evidence captured per round (`.eval/`)
 
 - `facts.json` — raw receipts: build/run commands, exit codes, timings (no MSE, no verdict)
