@@ -95,6 +95,31 @@ for MODEL in "${MODELS[@]}"; do
                 -v "$WORK_DIR:/problem" \
                 "$IMAGE" chown -R "$(id -u):$(id -g)" /problem
 
+            # ----------------------------------------------------------------
+            # Make sure the container's evidence is actually visible on the
+            # host side of the bind mount BEFORE we rsync it out. On WSL2 the
+            # container's writes (and the chown above) can lag the host view,
+            # which previously left traces/ with only changed_diff.txt and no
+            # .eval/ for check_pass to judge. guest.sh always writes a
+            # .eval/facts.json sentinel (even when the agent fails), so: flush
+            # with sync, poll for that sentinel, and fail LOUD rather than
+            # silently produce a diff-only trace.
+            # ----------------------------------------------------------------
+            EVIDENCE="$WORK_DIR/.eval/facts.json"
+            EVIDENCE_TRIES=15
+            attempt=0
+            sync
+            until [ -s "$EVIDENCE" ]; do
+                attempt=$((attempt + 1))
+                if [ "$attempt" -ge "$EVIDENCE_TRIES" ]; then
+                    echo "ERROR: no evidence at $EVIDENCE after ${EVIDENCE_TRIES}s — ${PROBLEM_NAME} | ${MODEL} | round-${ROUND} produced no .eval/facts.json on the host." >&2
+                    echo "ERROR: refusing to write a diff-only trace (check_pass would find nothing). Aborting eval." >&2
+                    exit 1
+                fi
+                sync
+                sleep 1
+            done
+
             mkdir -p "$TRACE_DIR"
             TEMPDIR=$(mktemp -d)
             rsync -a --prune-empty-dirs \
