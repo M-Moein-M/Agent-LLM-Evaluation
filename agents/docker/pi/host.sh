@@ -11,6 +11,10 @@ EVAL_ROUNDS="${EVAL_ROUNDS:-20}"
 EVAL_PROBLEMS="${EVAL_PROBLEMS:-RabbitCT}"
 EVAL_SIZE="${EVAL_SIZE:-256}"
 EVAL_VARIANT="${EVAL_VARIANT:-LolaBunnyGPU}"
+# Large per-problem input data lives outside the (copied) problem dir, in a
+# gitignored repo-root data/ dir, and is bind-mounted read-only into the
+# container — never copied per round. Overridable via DATA_ROOT.
+DATA_ROOT="${DATA_ROOT:-$ROOT/data}"
 
 DATE_TAG=$(date +%Y%m%d-%H%M%S)
 echo "ROOT directory was set to $ROOT"
@@ -54,6 +58,16 @@ for MODEL in "${MODELS[@]}"; do
             rm -rf "$WORK_DIR"/*
             cp -a "$PROBLEM"/. "$WORK_DIR"/
 
+            # Read-only mount for problems whose bulk input data lives in
+            # $DATA_ROOT/<problem>/ instead of the copied workdir (e.g. RabbitCT).
+            # Mounted at the path the problem expects; the empty mountpoint left
+            # in the workdir is pruned by the rsync below. Empty array = no-op for
+            # problems without external data.
+            DATA_MOUNT=()
+            if [[ -d "$DATA_ROOT/$PROBLEM_NAME/RabbitInput" ]]; then
+                DATA_MOUNT=(-v "$DATA_ROOT/$PROBLEM_NAME/RabbitInput:/problem/RabbitInput:ro")
+            fi
+
             docker run --rm \
                 --gpus all \
                 -e "EVAL_MODEL=$MODEL" \
@@ -63,6 +77,7 @@ for MODEL in "${MODELS[@]}"; do
                 -v "$WORK_DIR:/problem" \
                 -v "$MODELS_CONFIG:/root/.pi/agent/models.json:ro" \
                 -v "$CONTAINER_SCRIPT:/host.sh:ro" \
+                "${DATA_MOUNT[@]}" \
                 "$IMAGE" /bin/bash -l /host.sh /problem
 
             # The eval container runs as root, so everything it wrote into the

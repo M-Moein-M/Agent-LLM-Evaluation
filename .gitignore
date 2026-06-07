@@ -20,3 +20,6 @@ build/
 *.sif
 
 traces/*
+
+# Large per-problem input data (downloaded via problems/<name>/download-input.sh)
+data/
