@@ -230,8 +230,107 @@ after editing one re-judges existing traces with no GPU re-run. RabbitCT-LolaBun
 `build → run → mse → gpu` (MSE under threshold against the reference volume, and
 GPU utilization above a floor to catch CPU fallback).
 
-> Operational details — running the eval, configuration env vars, and adding new
-> problems — are in [EVAL.md](EVAL.md).
+---
+
+## Running the eval
+
+Single entrypoint:
+
+```bash
+./scripts/run_eval.sh
+```
+
+### Configuration (environment variables)
+
+| Variable | Default | Description |
+|---|---|---|
+| `EVAL_AGENT` | `pi` | Agent harness to use (`pi` or `swe-mini`) |
+| `EVAL_MODELS` | (all from `models.json`) | Comma-separated model IDs |
+| `EVAL_ROUNDS` | `20` | Rounds per model |
+| `EVAL_PROBLEMS` | `RabbitCT-LolaBunny` | Comma-separated problem names |
+| `EVAL_SIZE` | `256` | Problem size (e.g. RabbitCT volume size) |
+| `EVAL_VARIANT` | `LolaBunnyGPU` | Variant name for the solution |
+| `MODELS_CONFIG` | `agents/apptainer/pi/models.json` | Path to models config JSON |
+
+Example — running two models for 20 rounds each:
+
+```bash
+EVAL_MODELS="deepseek-ai/DeepSeek-V4-Flash,Qwen/Qwen3.6-35B-A3B-FP8" \
+EVAL_ROUNDS=20 \
+./scripts/run_eval.sh
+```
+
+### Agent output format (solution.json)
+
+The agent writes `solution.json` at the problem root with this structure:
+
+```json
+{
+  "build": ["make TOOLCHAIN=CLANG"],
+  "run": ["./run-bench.sh -s 256 -v LolaBunnyGPU -c ./RabbitInput/Reference256.vol"],
+  "variant_name": "LolaBunnyGPU"
+}
+```
+
+- `build` — array of commands to build the solution (replayed in order by the harness)
+- `run` — array of commands to run and verify the solution (replayed in order)
+- `variant_name` — the variant identifier used in `-v` flags
+
+All commands are relative to the problem root directory. If the agent fails to produce a valid `solution.json`, the harness writes a FAIL result.
+
+### Re-judging existing traces (no GPU, no Docker)
+
+To re-run pass/fail judgment over existing traces — e.g. after tuning a threshold — use the host-side checker directly:
+
+```bash
+python checks/check_pass.py --traces traces              # all problems
+python checks/check_pass.py --traces traces --problems RabbitCT-LolaBunny
+```
+
+It writes `.eval/pass_result.json` for each round. Then aggregate:
+
+```bash
+python checks/collect_results.py
+```
+
+Outputs:
+- `results/runs.jsonl`
+- `results/summary.json` — pass@1 per model + which stages failed (e.g. `gpu` vs `mse`)
+
+### Tuning / adding pass criteria
+
+- **Tune thresholds:** edit the constants at the top of `checks/<PROBLEM>/check.py` (e.g. `MSE_MAX`, `GPU_MIN_AVG`, `GPU_MIN_PEAK`), then re-run `check_pass.py`.
+- **Add a problem's check:** create `checks/<PROBLEM>/check.py` with a `Check` subclass of `ProblemCheck` (see `checks/RabbitCT-LolaBunny/check.py`). Implement `stages()` returning ordered stage methods; mark `build`/`run` `fatal=True` so downstream stages are skipped (not failed) when they break. Use the inherited `facts()`, `log_value(pattern)`, and `gpu_stats()` helpers — never parse raw files yourself.
+
+## Expanding the benchmark
+
+### Add new models
+
+**Option A:** set `EVAL_MODELS` to a comma-separated list at runtime.
+
+**Option B:** add models to `agents/apptainer/pi/models.json` and let the runner auto-read them.
+
+### Add a new harness (e.g., Claude Code)
+
+Create a parallel Dockerfile + guest script that match the same output contract:
+
+- `agents/docker/<harness>/Dockerfile`
+- `agents/docker/<harness>/guest.sh` (must write `.eval/facts.json` + evidence files and `agent.jsonl`)
+
+Then extend the host runner to switch by `EVAL_HARNESS=pi|claude` and select the matching Dockerfile + guest script.
+
+### Add new problems
+
+Add a new folder under `problems/` with a `PROMPT.md` and any build/run assets. Then set:
+
+```bash
+EVAL_PROBLEMS="RabbitCT-LolaBunny,MyNewProblem"
+```
+
+The agent is expected to produce a `solution.json` with `build`, `run`, and `variant_name` fields in each problem directory. Two things are needed per problem:
+
+1. A tailored `problems/<PROBLEM>/PROMPT.md` describing the task and the required `solution.json` format.
+2. A `checks/<PROBLEM>/check.py` defining the pass criteria (see "Tuning / adding pass criteria" above).
 
 ---
 
