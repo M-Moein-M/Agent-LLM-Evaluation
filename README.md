@@ -226,7 +226,7 @@ Each problem defines a `checks/<P>/check.py` with a `Check` subclass of
 `ProblemCheck`. Stages run in order; `build`/`run` are *fatal* (if they fail,
 downstream stages are `skipped`, not failed — preserving "which stage broke").
 Thresholds are constants at the top of the file, so re-running `check_pass.py`
-after editing one re-judges existing traces with no GPU re-run. RabbitCT checks
+after editing one re-judges existing traces with no GPU re-run. RabbitCT-LolaBunny checks
 `build → run → mse → gpu` (MSE under threshold against the reference volume, and
 GPU utilization above a floor to catch CPU fallback).
 

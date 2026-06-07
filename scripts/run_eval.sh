@@ -7,7 +7,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EVAL_AGENT="${EVAL_AGENT:-pi}"
 EVAL_MODELS="${EVAL_MODELS:-}"
 EVAL_ROUNDS="${EVAL_ROUNDS:-20}"
-EVAL_PROBLEMS="${EVAL_PROBLEMS:-RabbitCT}"
+EVAL_PROBLEMS="${EVAL_PROBLEMS:-RabbitCT-LolaBunny}"
 EVAL_SIZE="${EVAL_SIZE:-256}"
 EVAL_VARIANT="${EVAL_VARIANT:-LolaBunnyGPU}"
 MODELS_CONFIG="${MODELS_CONFIG:-$ROOT/agents/apptainer/pi/models.json}"
@@ -37,15 +37,35 @@ export DATA_ROOT
 # problem for now). Data lives in the gitignored repo-root data/ dir and is
 # bind-mounted read-only into the container by host.sh — never copied per round.
 # ---------------------------------------------------------------------------
-if [[ ",$EVAL_PROBLEMS," == *",RabbitCT,"* ]]; then
-  RABBIT_DATA="$DATA_ROOT/RabbitCT"
-  sz=$(du -sm "$RABBIT_DATA" 2>/dev/null | cut -f1 || true); sz="${sz:-0}"
+# RabbitCT family: every RabbitCT-<variant> problem reconstructs from the SAME
+# ~4.5GB RabbitInput. Keep one canonical copy in data/RabbitCT/ and symlink each
+# requested variant's data dir (data/<variant> -> RabbitCT) so host.sh's
+# per-problem lookup ($DATA_ROOT/<problem>/RabbitInput) resolves to it — one
+# download, no duplication.
+RABBIT_CANON="$DATA_ROOT/RabbitCT"
+RABBIT_VARIANTS=()
+IFS=',' read -r -a _PROBS <<< "$EVAL_PROBLEMS"
+for _p in "${_PROBS[@]}"; do
+  case "$_p" in
+    RabbitCT|RabbitCT-*) RABBIT_VARIANTS+=("$_p") ;;
+  esac
+done
+if [[ ${#RABBIT_VARIANTS[@]} -gt 0 ]]; then
+  sz=$(du -sLm "$RABBIT_CANON" 2>/dev/null | cut -f1 || true); sz="${sz:-0}"
   if [[ "$sz" -ge 4096 ]]; then
-    echo "Stage 1: RabbitCT data present (${sz} MB in $RABBIT_DATA) — skipping download."
+    echo "Stage 1: RabbitCT data present (${sz} MB in $RABBIT_CANON) — skipping download."
   else
-    echo "Stage 1: RabbitCT data missing/incomplete (${sz} MB) — downloading into $RABBIT_DATA ..."
-    "$ROOT/problems/RabbitCT/download-input.sh" "$RABBIT_DATA"
+    echo "Stage 1: RabbitCT data missing/incomplete (${sz} MB) — downloading into $RABBIT_CANON ..."
+    mkdir -p "$RABBIT_CANON"
+    "$ROOT/problems/RabbitCT-LolaBunny/download-input.sh" "$RABBIT_CANON"
   fi
+  # Point each requested variant's data dir at the canonical copy (gitignored).
+  for _v in "${RABBIT_VARIANTS[@]}"; do
+    if [[ "$_v" != "RabbitCT" && ! -e "$DATA_ROOT/$_v" ]]; then
+      ln -s RabbitCT "$DATA_ROOT/$_v"
+      echo "Stage 1: linked data/$_v -> RabbitCT"
+    fi
+  done
 fi
 
 # ---------------------------------------------------------------------------

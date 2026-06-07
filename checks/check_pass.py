@@ -10,7 +10,7 @@ by the container. Idempotent: re-run any time after editing a threshold to
 recompute verdicts with zero GPU cost.
 
     python checks/check_pass.py --traces traces
-    python checks/check_pass.py --traces traces --problems RabbitCT
+    python checks/check_pass.py --traces traces --problems RabbitCT-LolaBunny
 """
 
 import argparse

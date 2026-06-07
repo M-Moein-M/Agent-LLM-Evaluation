@@ -46,7 +46,7 @@ collect_results.py: aggregate → runs.jsonl + summary.json
 
 - `EVAL_MODELS`: comma-separated model IDs (default: parse from `models.json`)
 - `EVAL_ROUNDS`: rounds per model (default: 20)
-- `EVAL_PROBLEMS`: comma-separated problem names (default: RabbitCT)
+- `EVAL_PROBLEMS`: comma-separated problem names (default: RabbitCT-LolaBunny)
 - `EVAL_SIZE`: problem size for RabbitCT (default: 256)
 - `MODELS_CONFIG`: path to `models.json` (default: `agents/apptainer/pi/models.json`)
 
@@ -86,7 +86,7 @@ just run it again (no GPU, no Docker):
 
 ```bash
 python checks/check_pass.py --traces traces          # all problems
-python checks/check_pass.py --traces traces --problems RabbitCT
+python checks/check_pass.py --traces traces --problems RabbitCT-LolaBunny
 ```
 
 It writes `.eval/pass_result.json` for each round. Then aggregate:
@@ -104,7 +104,7 @@ Outputs:
 - **Tune thresholds:** edit the constants at the top of `checks/<PROBLEM>/check.py`
   (e.g. `MSE_MAX`, `GPU_MIN_AVG`, `GPU_MIN_PEAK`), then re-run `check_pass.py`.
 - **Add a problem's check:** create `checks/<PROBLEM>/check.py` with a `Check`
-  subclass of `ProblemCheck` (see `checks/RabbitCT/check.py`). Implement `stages()`
+  subclass of `ProblemCheck` (see `checks/RabbitCT-LolaBunny/check.py`). Implement `stages()`
   returning ordered stage methods; mark `build`/`run` `fatal=True` so downstream
   stages are skipped (not failed) when they break. Use the inherited `facts()`,
   `log_value(pattern)`, and `gpu_stats()` helpers — never parse raw files yourself.
@@ -131,7 +131,7 @@ Then extend the host runner to switch by `EVAL_HARNESS=pi|claude` and select the
 Add a new folder under `problems/` with a `PROMPT.md` and any build/run assets. Then set:
 
 ```bash
-EVAL_PROBLEMS="RabbitCT,MyNewProblem"
+EVAL_PROBLEMS="RabbitCT-LolaBunny,MyNewProblem"
 ```
 
 The agent is expected to produce a `solution.json` with `build`, `run`, and `variant_name` fields in each problem directory. Two things are needed per problem:

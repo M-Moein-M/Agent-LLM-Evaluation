@@ -9,7 +9,7 @@ IMAGE="agent-eval-pi:latest"
 CONTAINER_SCRIPT="$ROOT/agents/docker/pi/guest.sh"
 MODELS_CONFIG="${MODELS_CONFIG:-$ROOT/agents/apptainer/pi/models.json}"
 EVAL_ROUNDS="${EVAL_ROUNDS:-20}"
-EVAL_PROBLEMS="${EVAL_PROBLEMS:-RabbitCT}"
+EVAL_PROBLEMS="${EVAL_PROBLEMS:-RabbitCT-LolaBunny}"
 EVAL_SIZE="${EVAL_SIZE:-256}"
 EVAL_VARIANT="${EVAL_VARIANT:-LolaBunnyGPU}"
 # Large per-problem input data lives outside the (copied) problem dir, in a

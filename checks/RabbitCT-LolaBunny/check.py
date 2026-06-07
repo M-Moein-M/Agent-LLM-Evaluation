@@ -1,4 +1,4 @@
-"""Pass check for the RabbitCT problem.
+"""Pass check for the RabbitCT-LolaBunny problem.
 
 Stages (in order, build/run are fatal):
     build → run → mse → gpu
