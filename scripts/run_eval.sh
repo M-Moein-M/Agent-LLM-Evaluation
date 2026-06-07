@@ -4,6 +4,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+EVAL_AGENT="${EVAL_AGENT:-pi}"
 EVAL_MODELS="${EVAL_MODELS:-}"
 EVAL_ROUNDS="${EVAL_ROUNDS:-20}"
 EVAL_PROBLEMS="${EVAL_PROBLEMS:-RabbitCT}"
@@ -20,6 +21,7 @@ if [ -z "$EVAL_MODELS" ]; then
   fi
 fi
 
+export EVAL_AGENT
 export EVAL_MODELS
 export EVAL_ROUNDS
 export EVAL_PROBLEMS
@@ -47,6 +49,12 @@ if [[ ",$EVAL_PROBLEMS," == *",RabbitCT,"* ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Stage 2: run the eval.
+# Stage 2: run the eval with the selected agent (EVAL_AGENT, default "pi").
+# Each agent has its own orchestrator at agents/docker/<agent>/host.sh.
 # ---------------------------------------------------------------------------
-exec "$ROOT/agents/docker/pi/host.sh"
+AGENT_HOST="$ROOT/agents/docker/$EVAL_AGENT/host.sh"
+if [[ ! -f "$AGENT_HOST" ]]; then
+  echo "ERROR: unknown EVAL_AGENT '$EVAL_AGENT' — no orchestrator at $AGENT_HOST" >&2
+  exit 1
+fi
+exec "$AGENT_HOST"

@@ -45,6 +45,7 @@ def load_runs(traces_root):
 
         runs.append(
             {
+                "agent": facts.get("agent", "unknown"),
                 "model": facts.get("model", "unknown"),
                 "round": facts.get("round"),
                 "passed": bool(verdict.get("passed")),
@@ -65,10 +66,12 @@ def failed_stage_names(run):
 
 
 def summarize(runs):
-    by_model = {}
+    # Key by (agent, model) so the same model run by different agents (pi,
+    # swe-mini, ...) is reported separately rather than silently merged.
+    by_key = {}
     for run in runs:
-        model = run["model"]
-        entry = by_model.setdefault(model, {"runs": 0, "passed": 0, "stage_failures": {}})
+        key = (run.get("agent", "unknown"), run["model"])
+        entry = by_key.setdefault(key, {"runs": 0, "passed": 0, "stage_failures": {}})
         entry["runs"] += 1
         if run["passed"]:
             entry["passed"] += 1
@@ -76,10 +79,10 @@ def summarize(runs):
             for name in failed_stage_names(run):
                 entry["stage_failures"][name] = entry["stage_failures"].get(name, 0) + 1
 
-    summary = {"models": {}}
-    for model, stats in by_model.items():
+    summary = {"agents": {}}
+    for (agent, model), stats in by_key.items():
         pass_at_1 = stats["passed"] / stats["runs"] if stats["runs"] else None
-        summary["models"][model] = {
+        summary["agents"].setdefault(agent, {})[model] = {
             "runs": stats["runs"],
             "passed": stats["passed"],
             "pass@1": pass_at_1,

@@ -4,6 +4,7 @@
 set -euo pipefail
 
 PROBLEM_DIR=$1
+EVAL_AGENT="${EVAL_AGENT:-pi}"
 EVAL_MODEL="${EVAL_MODEL:-unknown-model}"
 EVAL_ROUND="${EVAL_ROUND:-0}"
 EVAL_SIZE="${EVAL_SIZE:-256}"
@@ -52,6 +53,7 @@ write_result() {
 	cat > "$EVAL_DIR/facts.json" <<EOF
 {
 	"model": "${EVAL_MODEL}",
+	"agent": "${EVAL_AGENT}",
 	"round": ${EVAL_ROUND},
 	"date": "${DATE_TAG}",
 	"size": ${EVAL_SIZE},
@@ -78,6 +80,7 @@ write_fail_result() {
 	cat > "$EVAL_DIR/facts.json" <<EOF
 {
 	"model": "${EVAL_MODEL}",
+	"agent": "${EVAL_AGENT}",
 	"round": ${EVAL_ROUND},
 	"date": "${DATE_TAG}",
 	"size": ${EVAL_SIZE},
