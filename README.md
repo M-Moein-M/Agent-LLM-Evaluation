@@ -119,12 +119,15 @@ A sandboxed HPC environment that wraps real CLI agents and exposes them to bench
 ## Current implementation
 
 Layers 2 and 3 above are the target design. What is built today is a working
-pass@1 harness for GPU kernel problems (RabbitCT first), organized around one
-principle: **separate side effects from judgment.**
+pass@1 harness for GPU kernel problems (CUDA: tiled-gemm, stream-compact;
+full mini-app: RabbitCT), with **multiple swappable agents** (currently `pi`
+and `swe-mini`) run over the same problems on real GPU hardware. The whole
+thing is organized around one principle: **separate side effects from
+judgment.**
 
-- **Container (bash) = side effects.** The agent solves the problem inside a
-  GPU container, then the harness *replays the agent's own build/run commands*
-  and captures **raw evidence** to files. It interprets nothing.
+- **Container (bash) = side effects.** The selected agent solves the problem
+  inside a GPU container, then the harness *replays the agent's own build/run
+  commands* and captures **raw evidence** to files. It interprets nothing.
 - **Host (Python) = judgment over files.** A separate, re-runnable step parses
   that evidence, applies per-problem thresholds, and decides pass/fail. It needs
   only `python3` — no compiler, no GPU — so re-tuning a threshold recomputes
@@ -132,41 +135,90 @@ principle: **separate side effects from judgment.**
 
 This decoupling means the expensive GPU run happens once, while the verdict can
 be re-derived cheaply and audited independently of what the agent self-reported.
+Because judgment is agent-agnostic (it reads `.eval/` evidence, not the agent),
+adding a new agent is just a new container + invocation — the checks are reused.
 
 ### Pipeline
 
+`scripts/run_eval.sh` is the single entrypoint. It is **two-stage** and selects
+the agent via `EVAL_AGENT` (default `pi`):
+
 ```
-host.sh        loop over models × rounds × problems; run container with --gpus all
-  guest.sh     run agent → it writes source + solution.json (its build/run cmds)
-  guest.sh     replay build/run; capture raw evidence → .eval/
-  host.sh      rsync trace (agent diff + .eval/)
-host.sh →
-  check_pass.py  judge each round against checks/<PROBLEM>/check.py → pass_result.json
-collect_results.py  aggregate → pass@1 per model + per-stage failure breakdown
+run_eval.sh   Stage 1: ensure bulk input data is present (e.g. RabbitCT's ~4.5GB
+              RabbitInput → gitignored data/, downloaded if missing)
+run_eval.sh   Stage 2: exec agents/docker/$EVAL_AGENT/host.sh
+  host.sh        build agent image if missing; loop over models × rounds × problems
+  host.sh        copy problem → workdir; bind-mount bulk data read-only (never copied)
+    docker run   --gpus all → guest.sh
+      guest.sh     run agent → it writes source + solution.json (its build/run cmds)
+      guest.sh     replay build/run; capture raw evidence → .eval/ (+ facts.json)
+  host.sh        extract trace from INSIDE a container, streamed out as a tar
+                 (avoids a WSL2 bind-mount readdir race) → traces/<problem>/<agent>/...
+  host.sh →
+    check_pass.py     judge each round vs checks/<PROBLEM>/check.py → pass_result.json
+collect_results.py    aggregate → pass@1 per (agent, model) + per-stage failures
+```
+
+**Trace layout** (the `<agent>` segment sits right after `<problem>` so the
+judging code, which derives the problem from the first path segment, is
+unchanged and pi/swe-mini runs of the same model never collide):
+
+```
+traces/<problem>/<agent>/<model_tag>/<run_timestamp>/round-<N>/
 ```
 
 ### Components
 
 | Path | Role |
 |---|---|
-| `agents/docker/pi/host.sh` | Orchestrator: builds the image, loops, runs containers, rsyncs traces, invokes the host-side checks. |
-| `agents/docker/pi/guest.sh` | In-container: runs the agent, replays its `solution.json` commands, captures evidence. **No interpretation.** |
+| `scripts/run_eval.sh` | Single entrypoint. Sets `EVAL_*` defaults, runs Stage-1 data prep, then execs the selected agent's `host.sh`. |
+| `agents/docker/<agent>/host.sh` | Orchestrator: builds the image, loops, runs containers, extracts traces, invokes the host-side checks. |
+| `agents/docker/<agent>/guest.sh` | In-container: runs the agent, replays its `solution.json` commands, captures evidence. **No interpretation.** |
+| `agents/docker/<agent>/Dockerfile` | The agent's image (CUDA base + that agent's runtime). |
+| `agents/docker/swe-mini/mini.yaml` | swe-mini-specific config (prompt templates + a finite `step_limit`); gateway creds/model/timeout are injected at runtime. |
 | `problems/<P>/PROMPT.md` | Task description + the `solution.json` contract the agent must produce. |
-| `checks/` | Self-contained judging subsystem, kept outside the agent workspace so it can't be gamed. |
+| `data/<P>/` | Bulk per-problem input (gitignored), bind-mounted read-only into the container — never copied per round. |
+| `checks/` | Self-contained, **agent-agnostic** judging subsystem, kept outside the agent workspace so it can't be gamed. |
 | `checks/eval_lib.py` | Shared `ProblemCheck` base + evidence accessors (`facts()`, `log_value()`, `gpu_stats()`). |
 | `checks/<P>/check.py` | Per-problem pass criteria: ordered stages + tunable threshold constants. |
 | `checks/check_pass.py` | Host-side driver: runs each problem's check over a trace → `pass_result.json`. |
-| `checks/collect_results.py` | Aggregates verdicts → pass@1 per model and which stages fail. |
+| `checks/collect_results.py` | Aggregates verdicts → pass@1 per `(agent, model)` and which stages fail. |
 
-*✅Tip*: If you ever change the Dockerfile again, rebuild manually with the same --no-cache command, since the auto-build won't re-trigger on an existing tag. Run `docker build --pull --no-cache -t agent-eval-pi:latest -f agents\docker\pi\Dockerfile agents\docker\pi`
+### Agents
 
-### Evidence captured per round (`.eval/`)
+An "agent" is just a directory under `agents/docker/<agent>/` with a `Dockerfile`,
+`host.sh`, and `guest.sh`. `EVAL_AGENT` picks which one runs. Currently:
 
-- `facts.json` — raw receipts: build/run commands, exit codes, timings (no MSE, no verdict)
+| Agent | Runtime | Notes |
+|---|---|---|
+| `pi` | `@mariozechner/pi-coding-agent` (Node) | Writes a filtered event-stream trace to `agent.jsonl`. |
+| `swe-mini` | `mini-swe-agent` (Python, litellm) | Bash-tool agent; writes a single-JSON trace to `agent.traj.json`. Talks to the OpenAI-compatible gateway via litellm; `mini.yaml` supplies prompts. |
+
+Both read the **same** `models.json` (single source of the gateway `baseUrl` +
+`apiKey` + model ids) and produce the same evidence shape, so `checks/` judges
+them identically. Adding an agent = add `agents/docker/<name>/{Dockerfile,host.sh,guest.sh}`
+(mirror an existing pair, swap the agent-invocation block) and run with
+`EVAL_AGENT=<name>`.
+
+*✅Tip*: If you change a Dockerfile, rebuild manually with `--no-cache`, since the
+auto-build won't re-trigger on an existing tag, e.g.
+`docker build --pull --no-cache -t agent-eval-pi:latest -f agents/docker/pi/Dockerfile agents/docker/pi`
+(swap `pi` → `swe-mini` / `agent-eval-swe-mini:latest` for that image).
+
+### Evidence captured per round
+
+Inside `.eval/`:
+
+- `facts.json` — raw receipts: `agent`, `model`, build/run commands, exit codes, timings (no MSE, no verdict)
 - `build.log`, `run.log` — untouched command output
 - `gpu_info.txt` — `nvidia-smi -L` device identity
 - `gpu_usage.csv` — GPU utilization sampled at 250 ms during the run
 - `pass_result.json` — the verdict: overall `passed` + per-stage results (written host-side)
+
+Alongside `.eval/` in the round dir: `changed_diff.txt` (diff vs the pristine
+problem), `solution.json` (the agent's build/run contract), the changed sources
++ any built artifact, and the agent's own trace — `agent.jsonl` (pi) or
+`agent.traj.json` (swe-mini).
 
 ### Pass criteria per problem
 
