@@ -1,0 +1,27 @@
+# Normalize line endings so editing on Windows can't reintroduce CRLF into
+# files that run under bash / in Linux containers / WSL.
+
+# Treat everything as text and store with LF in the repo; let Git decide
+# binary-ness automatically.
+* text=auto eol=lf
+
+# Shell scripts MUST be LF in the working tree (CRLF breaks `#!/bin/bash`
+# and `set -euo pipefail` when run in WSL or the eval container).
+*.sh   text eol=lf
+*.bash text eol=lf
+
+# Windows-only scripts keep CRLF (none today, but correct if added later).
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Common binaries — never touch.
+*.png  binary
+*.jpg  binary
+*.gz   binary
+*.tgz  binary
+*.tar  binary
+*.sif  binary
+*.vol  binary
+*.rct  binary
+*.rctd binary
