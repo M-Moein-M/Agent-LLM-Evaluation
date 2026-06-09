@@ -1,10 +1,16 @@
 #! /bin/bash
-# Evaluation harness — agent produces code + solution.json, harness replays commands
+# Phase 2 (MEASURE) — swe-mini agent. Identical in spirit to
+# agents/docker/pi/measure.sh (and agent-agnostic): replays the agent's
+# solution.json build/run with GPU sampling and writes raw evidence to .eval/.
+#
+# Runs SERIALLY (one container per GPU) so wall-clock timing and the 250ms
+# gpu_usage.csv sampling reflect THIS run alone. Interprets nothing — pass/fail
+# judgment happens host-side in scripts/check_pass.py.
 
 set -euo pipefail
 
 PROBLEM_DIR=$1
-EVAL_AGENT="${EVAL_AGENT:-pi}"
+EVAL_AGENT="${EVAL_AGENT:-swe-mini}"
 EVAL_MODEL="${EVAL_MODEL:-unknown-model}"
 EVAL_ROUND="${EVAL_ROUND:-0}"
 EVAL_SIZE="${EVAL_SIZE:-256}"
@@ -12,33 +18,10 @@ EVAL_VARIANT="${EVAL_VARIANT:-LolaBunnyGPU}"
 
 DATE_TAG=$(date +%Y%m%d-%H%M%S)
 
-mkdir -p /root/.pi/agent
 cd "$PROBLEM_DIR"
-rm -rf .git/
-rm -rf .github/
 
 # ---------------------------------------------------------------------------
-# 1. Run the agent (code creation + self-debugging)
-# ---------------------------------------------------------------------------
-PROMPT=$(cat PROMPT.md)
-rm PROMPT.md
-
-tree -a
-tree /root/.pi -a
-
-pi --list-models
-# Drop the high-frequency streaming delta events before persisting the trace.
-# `message_update` / `tool_execution_update` re-serialize the *entire* accumulated
-# message on every token, which is quadratic and was ~99.7% of a 272MB trace.
-# The final content is preserved losslessly in message_end / tool_execution_end /
-# agent_end. `|| true` keeps the empty-output fail path working under pipefail.
-pi -p --mode json --model "$EVAL_MODEL" "$PROMPT" 2>/dev/null \
-	| { grep --line-buffered -Ev '"type":"(message_update|tool_execution_update)"' || true; } \
-	| tee ~/agent.jsonl
-cp ~/agent.jsonl "$PROBLEM_DIR"
-
-# ---------------------------------------------------------------------------
-# 2. Parse agent's solution.json
+# Parse agent's solution.json
 # ---------------------------------------------------------------------------
 SOLUTION_JSON="$PROBLEM_DIR/solution.json"
 EVAL_DIR="$PROBLEM_DIR/.eval"
@@ -49,56 +32,48 @@ mkdir -p "$EVAL_DIR"
 # Defined early so the FAIL early-exits below can call them.
 # Pass/fail judgment happens host-side in scripts/check_pass.py.
 # ---------------------------------------------------------------------------
+# Build facts.json with jq so build/run COMMANDS (which can contain quotes,
+# e.g. LolaOMP's CUDA_ARCH="-gencode=...") are JSON-escaped. Raw heredoc
+# interpolation produced invalid JSON for such commands, which crashed the
+# host-side check. jq is present in the image.
 write_result() {
-	cat > "$EVAL_DIR/facts.json" <<EOF
-{
-	"model": "${EVAL_MODEL}",
-	"agent": "${EVAL_AGENT}",
-	"round": ${EVAL_ROUND},
-	"date": "${DATE_TAG}",
-	"size": ${EVAL_SIZE},
-	"variant": "${EVAL_VARIANT}",
-	"source": "solution.json",
-	"build": {
-		"cmd": "${BUILD_CMD}",
-		"status": ${BUILD_STATUS},
-		"start": ${BUILD_START},
-		"end": ${BUILD_END}
-	},
-	"run": {
-		"cmd": "${RUN_CMD}",
-		"status": ${RUN_STATUS},
-		"start": ${RUN_START},
-		"end": ${RUN_END}
-	}
-}
-EOF
+	jq -n \
+		--arg model "$EVAL_MODEL" \
+		--arg agent "$EVAL_AGENT" \
+		--argjson round "$EVAL_ROUND" \
+		--arg date "$DATE_TAG" \
+		--argjson size "$EVAL_SIZE" \
+		--arg variant "$EVAL_VARIANT" \
+		--arg build_cmd "$BUILD_CMD" \
+		--argjson build_status "$BUILD_STATUS" \
+		--argjson build_start "$BUILD_START" \
+		--argjson build_end "$BUILD_END" \
+		--arg run_cmd "$RUN_CMD" \
+		--argjson run_status "$RUN_STATUS" \
+		--argjson run_start "$RUN_START" \
+		--argjson run_end "$RUN_END" \
+		'{model:$model, agent:$agent, round:$round, date:$date, size:$size,
+		  variant:$variant, source:"solution.json",
+		  build:{cmd:$build_cmd, status:$build_status, start:$build_start, end:$build_end},
+		  run:{cmd:$run_cmd, status:$run_status, start:$run_start, end:$run_end}}' \
+		> "$EVAL_DIR/facts.json"
 }
 
 write_fail_result() {
 	local reason="$1"
-	cat > "$EVAL_DIR/facts.json" <<EOF
-{
-	"model": "${EVAL_MODEL}",
-	"agent": "${EVAL_AGENT}",
-	"round": ${EVAL_ROUND},
-	"date": "${DATE_TAG}",
-	"size": ${EVAL_SIZE},
-	"variant": "${EVAL_VARIANT}",
-	"source": "solution.json",
-	"failure_reason": "${reason}",
-	"build": {
-		"status": 1,
-		"start": 0,
-		"end": 0
-	},
-	"run": {
-		"status": 1,
-		"start": 0,
-		"end": 0
-	}
-}
-EOF
+	jq -n \
+		--arg model "$EVAL_MODEL" \
+		--arg agent "$EVAL_AGENT" \
+		--argjson round "$EVAL_ROUND" \
+		--arg date "$DATE_TAG" \
+		--argjson size "$EVAL_SIZE" \
+		--arg variant "$EVAL_VARIANT" \
+		--arg reason "$reason" \
+		'{model:$model, agent:$agent, round:$round, date:$date, size:$size,
+		  variant:$variant, source:"solution.json", failure_reason:$reason,
+		  build:{status:1, start:0, end:0},
+		  run:{status:1, start:0, end:0}}' \
+		> "$EVAL_DIR/facts.json"
 }
 
 if [ ! -f "$SOLUTION_JSON" ]; then
@@ -124,7 +99,7 @@ fi
 echo "Harness replaying: build='$BUILD_CMD' run='$RUN_CMD' variant='$EVAL_VARIANT'"
 
 # ---------------------------------------------------------------------------
-# 3. GPU evidence
+# GPU evidence
 # ---------------------------------------------------------------------------
 GPU_INFO="$EVAL_DIR/gpu_info.txt"
 GPU_USAGE="$EVAL_DIR/gpu_usage.csv"
@@ -136,7 +111,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 4. Replay build command
+# Replay build command
 # ---------------------------------------------------------------------------
 BUILD_LOG="$EVAL_DIR/build.log"
 BUILD_START=$(date +%s)
@@ -150,7 +125,7 @@ RUN_START=0
 RUN_END=0
 
 # ---------------------------------------------------------------------------
-# 5. Replay run command (with high-resolution GPU sampling)
+# Replay run command (with high-resolution GPU sampling)
 # ---------------------------------------------------------------------------
 if [ "$BUILD_STATUS" -eq 0 ]; then
 	RUN_LOG="$EVAL_DIR/run.log"
@@ -176,6 +151,6 @@ if [ "$BUILD_STATUS" -eq 0 ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 6. Write facts.json
+# Write facts.json
 # ---------------------------------------------------------------------------
 write_result
