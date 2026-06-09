@@ -1,0 +1,32 @@
+Bootstrap: docker
+From: nvidia/cuda:12.4.1-devel-ubuntu22.04
+
+# Apptainer image for the swe-mini agent. Mirrors agents/docker/swe-mini/Dockerfile
+# (CUDA devel base + Python + mini-swe-agent / litellm).
+#
+# Build (on a node with fakeroot — you have it):
+#   APPTAINER_CACHEDIR=$TMPDIR/apptainer-cache \
+#   apptainer build --fakeroot agents/apptainer/swe-mini/agent.sif agents/apptainer/swe-mini/agent.def
+
+%post
+    apt-get update -y && apt-get install -y --no-install-recommends \
+        git \
+        curl \
+        wget \
+        tree \
+        ca-certificates \
+        build-essential \
+        libssl-dev \
+        libffi-dev \
+        libnuma-dev \
+        rsync \
+        jq \
+        python3 \
+        python3-pip \
+        python3-venv \
+        && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+    pip3 install --no-cache-dir mini-swe-agent
+
+%environment
+    export PATH=/usr/local/bin:$PATH
