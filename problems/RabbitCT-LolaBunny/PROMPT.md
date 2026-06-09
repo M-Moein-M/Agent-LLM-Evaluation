@@ -2,6 +2,8 @@ Implement a GPU version of the RabbitCT LolaBunny backprojection.
 
 Add a new GPU algorithm named `LolaBunnyGPU` that produces the same output as LolaBunny and works with the existing runner and `-c` verification. Keep LolaBunny intact for baseline comparison.
 
+Use **CUDA** (nvcc / the CUDA Runtime API) for the GPU implementation. Do **not** use OpenCL — the OpenCL runtime is not available in this environment and OpenCL device-query calls (e.g. `clGetPlatformIDs`) will hang. The CUDA toolkit and an NVIDIA GPU are available.
+
 Build, run, and verify your implementation. Debug until it produces correct results. Use size 256 and `./RabbitInput/Reference256.vol` for verification with the `-c` flag.
 
 When finished, write a file `solution.json` in the problem root with the exact commands you used:
