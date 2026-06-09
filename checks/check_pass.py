@@ -94,6 +94,7 @@ def main():
 
     checked = 0
     skipped = 0
+    errored = 0
     for problem, eval_dir in find_rounds(traces_root):
         if only and problem not in only:
             continue
@@ -104,7 +105,14 @@ def main():
             skipped += 1
             continue
 
-        verdict = check_cls(eval_dir).evaluate()
+        # A single malformed/edge-case trace (e.g. corrupt facts.json) must not
+        # abort judging the rest — report it and carry on.
+        try:
+            verdict = check_cls(eval_dir).evaluate()
+        except Exception as exc:
+            print(f"[ERROR] {eval_dir}: {type(exc).__name__}: {exc}", file=sys.stderr)
+            errored += 1
+            continue
         out = eval_dir / "pass_result.json"
         with open(out, "w", encoding="utf-8") as fh:
             json.dump(verdict.to_dict(), fh, indent=2)
@@ -115,7 +123,7 @@ def main():
         print(f"[{status}]{tail} {eval_dir}")
         checked += 1
 
-    print(f"\nChecked {checked} round(s); skipped {skipped}.")
+    print(f"\nChecked {checked} round(s); skipped {skipped}; errored {errored}.")
     return 0
 
 
