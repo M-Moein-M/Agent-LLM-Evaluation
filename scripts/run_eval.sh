@@ -5,6 +5,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 EVAL_AGENT="${EVAL_AGENT:-pi}"
+CONTAINER_RUNTIME="${CONTAINER_RUNTIME:-docker}"   # docker (local) | apptainer (cluster)
 EVAL_MODELS="${EVAL_MODELS:-}"
 EVAL_ROUNDS="${EVAL_ROUNDS:-20}"
 EVAL_PROBLEMS="${EVAL_PROBLEMS:-RabbitCT-LolaBunny}"
@@ -22,6 +23,7 @@ if [ -z "$EVAL_MODELS" ]; then
 fi
 
 export EVAL_AGENT
+export CONTAINER_RUNTIME
 export EVAL_MODELS
 export EVAL_ROUNDS
 export EVAL_PROBLEMS
@@ -69,12 +71,14 @@ if [[ ${#RABBIT_VARIANTS[@]} -gt 0 ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Stage 2: run the eval with the selected agent (EVAL_AGENT, default "pi").
-# Each agent has its own orchestrator at agents/docker/<agent>/host.sh.
+# Stage 2: run the eval with the selected agent + runtime. Orchestrator lives at
+# agents/<CONTAINER_RUNTIME>/<EVAL_AGENT>/host.sh — docker (local) or apptainer
+# (cluster). Both implement the same two-phase (parallel solve / serial measure)
+# contract over the same problems + checks.
 # ---------------------------------------------------------------------------
-AGENT_HOST="$ROOT/agents/docker/$EVAL_AGENT/host.sh"
+AGENT_HOST="$ROOT/agents/$CONTAINER_RUNTIME/$EVAL_AGENT/host.sh"
 if [[ ! -f "$AGENT_HOST" ]]; then
-  echo "ERROR: unknown EVAL_AGENT '$EVAL_AGENT' — no orchestrator at $AGENT_HOST" >&2
+  echo "ERROR: no orchestrator at $AGENT_HOST (EVAL_AGENT='$EVAL_AGENT', CONTAINER_RUNTIME='$CONTAINER_RUNTIME')" >&2
   exit 1
 fi
 exec "$AGENT_HOST"

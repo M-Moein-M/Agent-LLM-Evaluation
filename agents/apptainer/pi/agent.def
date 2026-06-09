@@ -1,22 +1,39 @@
 Bootstrap: docker
-From: node:20-slim
+From: nvidia/cuda:12.4.1-devel-ubuntu22.04
 
-# run as:   APPTAINER_CACHEDIR=/home/${GROUP}/${USER}/containers/cache apptainer build --force agent.sif agent.def
+# Apptainer image for the pi agent. Mirrors agents/docker/pi/Dockerfile (CUDA
+# devel base + Node 20 + pi-coding-agent) so the cluster runs the exact same
+# toolchain as local Docker. The previous def bootstrapped node:20-slim, which
+# had NO CUDA toolkit and could not compile/run the GPU problems.
+#
+# Build (on a node with fakeroot — you have it):
+#   APPTAINER_CACHEDIR=$TMPDIR/apptainer-cache \
+#   apptainer build --fakeroot agents/apptainer/pi/agent.sif agents/apptainer/pi/agent.def
 
 %post
-    # ── System packages ────────────────────────────────────────────────────────
     apt-get update -y && apt-get install -y --no-install-recommends \
         git \
         curl \
         wget \
         tree \
+        ca-certificates \
         build-essential \
         libssl-dev \
         libffi-dev \
         libnuma-dev \
+        rsync \
+        jq \
         && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-	npm install -g @mariozechner/pi-coding-agent
+    # Node.js 20.x
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+    apt-get update -y && apt-get install -y --no-install-recommends nodejs \
+        && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+    npm install -g @mariozechner/pi-coding-agent
+
+    # Config dir for the --home/bind target (pi reads ~/.pi/agent/models.json).
+    mkdir -p /root/.pi/agent
 
 %environment
-	export PATH=/usr/local/bin:$PATH
+    export PATH=/usr/local/bin:$PATH

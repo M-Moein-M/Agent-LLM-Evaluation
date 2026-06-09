@@ -1,16 +1,16 @@
 {
   "providers": {
     "local": {
-      "baseUrl": "http://localhost:11434/v1",
+      "baseUrl": "http://10.0.0.1:30000/v1",
       "api": "openai-completions",
-      "apiKey": "ollama",
+      "apiKey": "sk-REDACTED",
       "compat": {
         "supportsDeveloperRole": false,
         "supportsReasoningEffort": false
       },
       "models": [
-        { "id": "llama3.1:8b" },
-        { "id": "qwen2.5-coder:7b" }
+        { "id": "Qwen3.6-35B-A3B", "contextWindow": 256000, "maxTokens": 262144 },
+        { "id": "deepseek-ai/DeepSeek-V4-Flash", "contextWindow": 256000, "maxTokens": 1048576 }
       ]
     }
   }
