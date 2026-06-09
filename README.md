@@ -1,421 +1,290 @@
-# Systematic comparison and Evaluation Coding agents
+# Systematic Comparison and Evaluation of Coding Agents
 
-A evaluation framework for benchmarking LLMs and coding agents on High Performance Computing (HPC) tasks — measuring correctness, runtime performance, and agentic iteration behavior on real parallel and distributed workloads.
+An evaluation framework for benchmarking LLMs and coding agents on High
+Performance Computing (HPC) tasks — measuring **correctness**, **runtime
+performance**, and **agentic iteration behavior** on real parallel and
+distributed workloads.
+
+> **Who this README is for:** human readers — to understand what the project
+> is, why it exists, how it's built, and how to run it. If you are an AI agent
+> working *in* this repo, read [`AGENT.md`](AGENT.md) instead — it has the
+> operational details (exact run flow, what not to touch, where output lands,
+> and the environment gotchas).
 
 ---
 
 ## Motivation
 
-Existing benchmarks like ParEval test static code generation for parallel programming, but fall short in three key areas:
-- they don't evaluate iterative agent workflows
-- they lack real performance measurement at scale
-- they omit modern execution models like SYCL and Fortran
+Existing benchmarks like ParEval test static code generation for parallel
+programming, but fall short in three key areas:
 
-This project aims to address all three gaps with access to real multi-GPU, multi-node cluster hardware.
+- they don't evaluate iterative **agent** workflows,
+- they lack real **performance** measurement at scale,
+- they omit modern execution models like SYCL and Fortran.
 
----
+This project addresses all three gaps, with access to real multi-GPU,
+multi-node cluster hardware as the differentiator.
 
 ## Goals
 
-- Evaluate both **raw LLMs** (API/non-agentic) and **coding agents** (Claude Code, OpenHands, Codex CLI) on HPC tasks
-- Measure **correctness**, **runtime performance**, and **agentic loop behavior** in a single unified framework
-- Produce a **public benchmark** that others can reproduce and build on
-- Create a leaderboard that updates quarterly and updates the results on a dedicated webpage.
----
-
-## Architecture
-
-The benchmark is organized into three layers:
-
-### Layer 1 — Task Library (based on ParEval)
-
-A structured collection of HPC problems across execution models and task types.
-
-**Execution models covered:**
-- MPI (distributed memory)
-- CUDA (NVIDIA GPU)
-- OpenMP (shared memory + GPU offloading)
-- HIP / ROCm (AMD GPU)
-- SYCL / oneAPI
-- Kokkos (portability layer)
-- Fortran (legacy modernization)
-
-**Task types:**
-- **Refactoring**
-- **Optimization**
-- **Debugging**
-- Generation — write parallel code from scratch given a specification
-- Translation — convert serial code to a parallel model
-- Migration — port between execution models (e.g., CUDA → OpenMP offloading, CUDA → SYCL)
-- Optimization — improve performance of existing parallel code guided by profiling output
-
-
-**Difficulty tiers:**
-- Tier 1: Single function / kernel
-- Tier 2: Multi-file module
-- Tier 3: Full mini-application
-
-**Problem domains** include: stencil codes, FFTs, sparse solvers, sorting, histograms, molecular dynamics patterns, and CFD kernels.
+- Evaluate both **raw LLMs** (API / non-agentic) and **coding agents** (Claude
+  Code, OpenHands, Codex CLI, pi, …) on HPC tasks.
+- Measure **correctness**, **runtime performance**, and **agentic loop
+  behavior** in a single unified framework.
+- Produce a **public, reproducible benchmark** with a leaderboard that updates
+  quarterly on a dedicated webpage.
 
 ---
 
-### Layer 2 — Evaluation Engine
+## What's built today
 
-Runs on real multi-GPU / multi-node cluster hardware. Measures three dimensions per task:
+The long-term design is a three-layer system (see [Target
+architecture](#target-architecture) below). What runs **today** is a working
+**pass@1 harness** for GPU/CPU kernel problems and a full mini-application
+(RabbitCT), with **multiple swappable agents** (`pi` and `swe-mini`) run over
+the same problems on real hardware.
 
-**Correctness**
-- `pass@k` against reference unit tests
-- Compile success rate
-- Runtime correctness (output validation against reference)
-
-**Performance**
-- `speedup@k` and `efficiency@k` relative to serial baseline
-- Strong scaling (fixed problem size, increasing node count)
-- Weak scaling (problem size grows with node count)
-- Roofline analysis (how close to theoretical bandwidth / compute limits)
-- Memory bandwidth utilization
-
-**Agentic loop**
-- Number of iterations to reach a passing solution
-- Compile-failure recovery rate
-- Runtime-failure recovery rate
-- `E(κ)` — expected token cost to reach a passing solution
-
----
-
-### Layer 3 — Agent Harness
-
-A sandboxed HPC environment that wraps real CLI agents and exposes them to benchmark tasks through a controlled loop.
-
-**LLMs to evaluate:**
-- NHR endpoints:
-- Claude models: Sonnet, Opus
-- Google Gemini
-- Open AI GPT 5.x
-- Open Weight Models:
-    - Kimi 2.6
-    - Qwen
-    - ...
-
-**Supported targets:**
-- Open code
-- Pi
-- Hermes
-- Antigravity
-- Claude Code (Anthropic agentic CLI)
-- Codex CLI (OpenAI agent)
-- OpenHands (open-source agent framework)
-- Raw LLMs via API (non-agentic baseline)
-
-**Environment requirements per agent run:**
-- Full compiler stack: GCC, NVCC / HIPcc / clang+SYCL
-- MPI runtime (`mpirun`, `srun`)
-- GPU passthrough or SLURM multi-node access
-- Controlled wall-clock and token budgets per task
-- Isolated containers with resource limits
-
----
-
-## Current implementation
-
-Layers 2 and 3 above are the target design. What is built today is a working
-pass@1 harness for GPU kernel problems (CUDA: tiled-gemm, stream-compact;
-full mini-app: RabbitCT), with **multiple swappable agents** (currently `pi`
-and `swe-mini`) run over the same problems on real GPU hardware. The whole
-thing is organized around one principle: **separate side effects from
+The whole thing is organized around one principle: **separate side effects from
 judgment.**
 
 - **Container (bash) = side effects.** The selected agent solves the problem
-  inside a GPU container, then the harness *replays the agent's own build/run
+  inside a container, then the harness *replays the agent's own build/run
   commands* and captures **raw evidence** to files. It interprets nothing.
 - **Host (Python) = judgment over files.** A separate, re-runnable step parses
   that evidence, applies per-problem thresholds, and decides pass/fail. It needs
   only `python3` — no compiler, no GPU — so re-tuning a threshold recomputes
   pass@1 over existing traces at zero GPU cost.
 
-This decoupling means the expensive GPU run happens once, while the verdict can
-be re-derived cheaply and audited independently of what the agent self-reported.
 Because judgment is agent-agnostic (it reads `.eval/` evidence, not the agent),
 adding a new agent is just a new container + invocation — the checks are reused.
 
-### Pipeline
-
-`scripts/run_eval.sh` is the single entrypoint. It is **two-stage** and selects
-the agent via `EVAL_AGENT` (default `pi`):
+### High-level architecture
 
 ```
-run_eval.sh   Stage 1: ensure bulk input data is present (e.g. RabbitCT's ~4.5GB
-              RabbitInput → gitignored data/, downloaded if missing)
-run_eval.sh   Stage 2: exec agents/docker/$EVAL_AGENT/host.sh
-  host.sh        build agent image if missing; loop over models × rounds × problems
-  host.sh        copy problem → workdir; bind-mount bulk data read-only (never copied)
-    docker run   --gpus all → guest.sh
-      guest.sh     run agent → it writes source + solution.json (its build/run cmds)
-      guest.sh     replay build/run; capture raw evidence → .eval/ (+ facts.json)
-  host.sh        extract trace from INSIDE a container, streamed out as a tar
-                 (avoids a WSL2 bind-mount readdir race) → traces/<problem>/<agent>/...
-  host.sh →
-    check_pass.py     judge each round vs checks/<PROBLEM>/check.py → pass_result.json
-collect_results.py    aggregate → pass@1 per (agent, model) + per-stage failures
+scripts/run_eval.sh              single entrypoint
+  ├─ Stage 1  ensure bulk input data is present (e.g. RabbitCT's ~4.5 GB input)
+  └─ Stage 2  exec agents/docker/$EVAL_AGENT/host.sh
+                ├─ solve   agent writes source + solution.json (its build/run cmds)
+                ├─ measure replay build/run with GPU sampling → raw evidence in .eval/
+                └─ extract trace → traces/<problem>/<agent>/<model>/<ts>/round-N/
+checks/check_pass.py             judge each round vs checks/<problem>/check.py
+checks/collect_results.py        aggregate → pass@1 per (agent, model)
 ```
 
-**Trace layout** (the `<agent>` segment sits right after `<problem>` so the
-judging code, which derives the problem from the first path segment, is
-unchanged and pi/swe-mini runs of the same model never collide):
+The two currently implemented agents:
 
-```
-traces/<problem>/<agent>/<model_tag>/<run_timestamp>/round-<N>/
-```
+| Agent      | Runtime                                  | Notes |
+|------------|------------------------------------------|-------|
+| `pi`       | `@mariozechner/pi-coding-agent` (Node)   | Two-phase: parallel *solve* (shared GPU) + serial *measure* (GPU-isolated). |
+| `swe-mini` | `mini-swe-agent` (Python, litellm)       | Two-phase like pi: parallel *solve* (shared GPU) + serial *measure*. Bash-tool agent talking to an OpenAI-compatible gateway. |
 
-### Components
-
-| Path | Role |
-|---|---|
-| `scripts/run_eval.sh` | Single entrypoint. Sets `EVAL_*` defaults, runs Stage-1 data prep, then execs the selected agent's `host.sh`. |
-| `agents/docker/<agent>/host.sh` | Orchestrator: builds the image, loops, runs containers, extracts traces, invokes the host-side checks. |
-| `agents/docker/<agent>/guest.sh` | In-container: runs the agent, replays its `solution.json` commands, captures evidence. **No interpretation.** |
-| `agents/docker/<agent>/Dockerfile` | The agent's image (CUDA base + that agent's runtime). |
-| `agents/docker/swe-mini/mini.yaml` | swe-mini-specific config (prompt templates + a finite `step_limit`); gateway creds/model/timeout are injected at runtime. |
-| `problems/<P>/PROMPT.md` | Task description + the `solution.json` contract the agent must produce. |
-| `data/<P>/` | Bulk per-problem input (gitignored), bind-mounted read-only into the container — never copied per round. |
-| `checks/` | Self-contained, **agent-agnostic** judging subsystem, kept outside the agent workspace so it can't be gamed. |
-| `checks/eval_lib.py` | Shared `ProblemCheck` base + evidence accessors (`facts()`, `log_value()`, `gpu_stats()`). |
-| `checks/<P>/check.py` | Per-problem pass criteria: ordered stages + tunable threshold constants. |
-| `checks/check_pass.py` | Host-side driver: runs each problem's check over a trace → `pass_result.json`. |
-| `checks/collect_results.py` | Aggregates verdicts → pass@1 per `(agent, model)` and which stages fail. |
-
-### Agents
-
-An "agent" is just a directory under `agents/docker/<agent>/` with a `Dockerfile`,
-`host.sh`, and `guest.sh`. `EVAL_AGENT` picks which one runs. Currently:
-
-| Agent | Runtime | Notes |
-|---|---|---|
-| `pi` | `@mariozechner/pi-coding-agent` (Node) | Writes a filtered event-stream trace to `agent.jsonl`. |
-| `swe-mini` | `mini-swe-agent` (Python, litellm) | Bash-tool agent; writes a single-JSON trace to `agent.traj.json`. Talks to the OpenAI-compatible gateway via litellm; `mini.yaml` supplies prompts. |
-
-Both read the **same** `models.json` (single source of the gateway `baseUrl` +
-`apiKey` + model ids) and produce the same evidence shape, so `checks/` judges
-them identically. Adding an agent = add `agents/docker/<name>/{Dockerfile,host.sh,guest.sh}`
-(mirror an existing pair, swap the agent-invocation block) and run with
-`EVAL_AGENT=<name>`.
-
-*✅Tip*: If you change a Dockerfile, rebuild manually with `--no-cache`, since the
-auto-build won't re-trigger on an existing tag, e.g.
-`docker build --pull --no-cache -t agent-eval-pi:latest -f agents/docker/pi/Dockerfile agents/docker/pi`
-(swap `pi` → `swe-mini` / `agent-eval-swe-mini:latest` for that image).
-
-### Evidence captured per round
-
-Inside `.eval/`:
-
-- `facts.json` — raw receipts: `agent`, `model`, build/run commands, exit codes, timings (no MSE, no verdict)
-- `build.log`, `run.log` — untouched command output
-- `gpu_info.txt` — `nvidia-smi -L` device identity
-- `gpu_usage.csv` — GPU utilization sampled at 250 ms during the run
-- `pass_result.json` — the verdict: overall `passed` + per-stage results (written host-side)
-
-Alongside `.eval/` in the round dir: `changed_diff.txt` (diff vs the pristine
-problem), `solution.json` (the agent's build/run contract), the changed sources
-+ any built artifact, and the agent's own trace — `agent.jsonl` (pi) or
-`agent.traj.json` (swe-mini).
-
-### Pass criteria per problem
-
-Each problem defines a `checks/<P>/check.py` with a `Check` subclass of
-`ProblemCheck`. Stages run in order; `build`/`run` are *fatal* (if they fail,
-downstream stages are `skipped`, not failed — preserving "which stage broke").
-Thresholds are constants at the top of the file, so re-running `check_pass.py`
-after editing one re-judges existing traces with no GPU re-run. RabbitCT-LolaBunny checks
-`build → run → mse → gpu` (MSE under threshold against the reference volume, and
-GPU utilization above a floor to catch CPU fallback).
+Both read the same gateway config and produce the same evidence shape, so the
+checks judge them identically.
 
 ---
 
-## Running the eval
+## Getting started
 
-Single entrypoint:
+### Prerequisites
+
+- **Docker** with NVIDIA GPU passthrough (`docker run --gpus all`). On Windows
+  this means **Docker Desktop with WSL2 integration**; the pipeline must be run
+  from inside WSL (see [`AGENT.md`](AGENT.md) for the exact invocation and why).
+- An **NVIDIA GPU** + recent driver (verified locally on a GTX 1050).
+- **`python3`** on the host (for the pass/fail checks — no GPU needed).
+- **`jq`** on the host (only if you don't set `EVAL_MODELS` explicitly; used to
+  read model IDs from the config).
+- Access to an **OpenAI-compatible LLM gateway** (the NHR endpoint). Its URL +
+  API key live in `agents/apptainer/pi/models.json`.
+
+### Run it
 
 ```bash
 ./scripts/run_eval.sh
 ```
 
-### Configuration (environment variables)
-
-| Variable | Default | Description |
-|---|---|---|
-| `EVAL_AGENT` | `pi` | Agent harness to use (`pi` or `swe-mini`) |
-| `EVAL_MODELS` | (all from `models.json`) | Comma-separated model IDs |
-| `EVAL_ROUNDS` | `20` | Rounds per model |
-| `EVAL_PROBLEMS` | `RabbitCT-LolaBunny` | Comma-separated problem names |
-| `EVAL_SIZE` | `256` | Problem size (e.g. RabbitCT volume size) |
-| `EVAL_VARIANT` | `LolaBunnyGPU` | Variant name for the solution |
-| `MODELS_CONFIG` | `agents/apptainer/pi/models.json` | Path to models config JSON |
-
-Example — running two models for 20 rounds each:
+That runs the default agent (`pi`) over the default problem
+(`RabbitCT-LolaBunny`) for every model in the config. Common overrides:
 
 ```bash
+EVAL_AGENT=swe-mini \
 EVAL_MODELS="deepseek-ai/DeepSeek-V4-Flash,Qwen/Qwen3.6-35B-A3B-FP8" \
 EVAL_ROUNDS=20 \
 ./scripts/run_eval.sh
 ```
 
-### Agent output format (solution.json)
-
-The agent writes `solution.json` at the problem root with this structure:
-
-```json
-{
-  "build": ["make TOOLCHAIN=CLANG"],
-  "run": ["./run-bench.sh -s 256 -v LolaBunnyGPU -c ./RabbitInput/Reference256.vol"],
-  "variant_name": "LolaBunnyGPU"
-}
-```
-
-- `build` — array of commands to build the solution (replayed in order by the harness)
-- `run` — array of commands to run and verify the solution (replayed in order)
-- `variant_name` — the variant identifier used in `-v` flags
-
-All commands are relative to the problem root directory. If the agent fails to produce a valid `solution.json`, the harness writes a FAIL result.
-
-### Re-judging existing traces (no GPU, no Docker)
-
-To re-run pass/fail judgment over existing traces — e.g. after tuning a threshold — use the host-side checker directly:
-
-```bash
-python checks/check_pass.py --traces traces              # all problems
-python checks/check_pass.py --traces traces --problems RabbitCT-LolaBunny
-```
-
-It writes `.eval/pass_result.json` for each round. Then aggregate:
-
-```bash
-python checks/collect_results.py
-```
-
-Outputs:
-- `results/runs.jsonl`
-- `results/summary.json` — pass@1 per model + which stages failed (e.g. `gpu` vs `mse`)
-
-### Tuning / adding pass criteria
-
-- **Tune thresholds:** edit the constants at the top of `checks/<PROBLEM>/check.py` (e.g. `MSE_MAX`, `GPU_MIN_AVG`, `GPU_MIN_PEAK`), then re-run `check_pass.py`.
-- **Add a problem's check:** create `checks/<PROBLEM>/check.py` with a `Check` subclass of `ProblemCheck` (see `checks/RabbitCT-LolaBunny/check.py`). Implement `stages()` returning ordered stage methods; mark `build`/`run` `fatal=True` so downstream stages are skipped (not failed) when they break. Use the inherited `facts()`, `log_value(pattern)`, and `gpu_stats()` helpers — never parse raw files yourself.
-
-## Expanding the benchmark
-
-### Add new models
-
-**Option A:** set `EVAL_MODELS` to a comma-separated list at runtime.
-
-**Option B:** add models to `agents/apptainer/pi/models.json` and let the runner auto-read them.
-
-### Add a new harness (e.g., Claude Code)
-
-Create a parallel Dockerfile + guest script that match the same output contract:
-
-- `agents/docker/<harness>/Dockerfile`
-- `agents/docker/<harness>/guest.sh` (must write `.eval/facts.json` + evidence files and `agent.jsonl`)
-
-Then extend the host runner to switch by `EVAL_HARNESS=pi|claude` and select the matching Dockerfile + guest script.
-
-### Add new problems
-
-Add a new folder under `problems/` with a `PROMPT.md` and any build/run assets. Then set:
-
-```bash
-EVAL_PROBLEMS="RabbitCT-LolaBunny,MyNewProblem"
-```
-
-The agent is expected to produce a `solution.json` with `build`, `run`, and `variant_name` fields in each problem directory. Two things are needed per problem:
-
-1. A tailored `problems/<PROBLEM>/PROMPT.md` describing the task and the required `solution.json` format.
-2. A `checks/<PROBLEM>/check.py` defining the pass criteria (see "Tuning / adding pass criteria" above).
+Results land in `traces/` (per-round evidence) and `results/summary.json`
+(pass@1 per model). The full list of environment variables, the single-problem
+workflow, and re-judging existing traces without a GPU are documented in
+[`AGENT.md`](AGENT.md).
 
 ---
 
-## Hardware architectures for local deployment
-- Apple Studio M1 Max
-- AMD MI300X
-- ??
+## Target architecture
 
-## Metrics for evaluation
+The benchmark is designed as three layers. Layer 1 and parts of Layers 2–3 are
+in progress; the rest is the roadmap.
 
-- How to measure the quality of the result?
-- Steps necessary to get a valid result
-- Reviewing the code quality
-- Waiting time
-- Collect experience in best practice document
+### Layer 1 — Task Library (based on ParEval)
 
+A structured collection of HPC problems across execution models and task types.
 
-## Relationship to Existing Work
+- **Execution models:** MPI, CUDA, OpenMP (incl. GPU offloading), HIP/ROCm,
+  SYCL/oneAPI, Kokkos, Fortran.
+- **Task types:** generation, translation (serial → parallel), migration
+  (CUDA → OpenMP/SYCL), optimization (profiling-guided), refactoring, debugging.
+- **Difficulty tiers:** single kernel → multi-file module → full mini-application.
+- **Domains:** stencil codes, FFTs, sparse solvers, sorting, histograms,
+  molecular dynamics, CFD kernels.
+
+### Layer 2 — Evaluation Engine
+
+Runs on real multi-GPU / multi-node hardware. Measures three dimensions:
+
+- **Correctness:** `pass@k`, compile success rate, runtime output validation.
+- **Performance:** `speedup@k` / `efficiency@k` vs serial baseline, strong &
+  weak scaling, roofline proximity, memory-bandwidth utilization.
+- **Agentic loop:** iterations to a passing solution, compile/runtime-failure
+  recovery rate, `E(κ)` (expected token cost to pass).
+
+### Layer 3 — Agent Harness
+
+A sandboxed HPC environment that wraps real CLI agents and exposes them to
+benchmark tasks through a controlled loop.
+
+- **LLMs to evaluate:** Claude (Sonnet, Opus), Gemini, GPT 5.x, and open-weight
+  models (Kimi 2.6, Qwen, DeepSeek, …) via NHR endpoints.
+- **Agent targets:** Claude Code, Codex CLI, OpenHands, OpenCode, pi, Hermes,
+  Antigravity, and raw-LLM-via-API baselines.
+- **Environment per run:** full compiler stack (GCC, NVCC/HIPcc/clang+SYCL),
+  MPI runtime, GPU/SLURM access, controlled wall-clock + token budgets,
+  isolated containers.
+
+---
+
+## Evaluation metrics
+
+> These metrics are heavily **task-dependent**, and they mean different things
+> for one-shot vs agentic tasks. A key open question is how to merge many tasks
+> into a single comparable value (cf. AgentBench's note that averaged scores are
+> dominated by easy, high-scoring tasks).
+
+**Our differentiator is compute** — multi-node / multi-GPU access. The metrics
+that *require* real hardware are the ones we should lead with:
+
+- **Strong & weak scaling** — needs actual MPI runs at p = 1, 2, 4, 8, 16, 32.
+  Simulators can't fake this.
+- **Roofline proximity** — needs hardware-specific profiling (Nsight, ROCm
+  profiler) against the real peak bandwidth/FLOPs of the device.
+- **Kaplan-Meier runtime** — running to completion (or timeout) on real
+  hardware, with proper statistical treatment of censored (timed-out) runs.
+- **speedup@k** — needs a real serial baseline on the *same* hardware;
+  cross-machine comparisons are junk.
+
+Hardware-agnostic metrics (still valuable, but not the differentiator):
+
+- **pass@k** (HumanEval) — probability that at least one of `k` samples is
+  correct. pass@1 is the probability the first attempt is right.
+- **E(κ)** — expected token cost to pass: `E(κ) = T_avg / pass@1`. (e.g. 10%
+  pass@1 at 1000 tokens average ⇒ 10 000.) A companion *context-growth* plot
+  shows whether context balloons or grows linearly, and where the first jump is.
+- **MT@4** (multi-turn persistent score) — break a task into stages
+  (implement+compile+run → verify vs gold → scalability), measure per-stage
+  failure and recovery rate, and token usage per stage. More granular than
+  pass@1: shows *where* an agent fails. On a failed stage you can reset the
+  trace and re-ask with the error message.
+- **Energy efficiency** — measuring serving energy (e.g. `llama.cpp` for
+  single-user serving). Caveat: focusing on energy pulls attention away from
+  code quality and scalability, which are under-studied.
+
+---
+
+## Relationship to existing work
 
 | Project | What it contributes | Gap this project fills |
 |---|---|---|
-| ParEval | 420 problems, 7 execution models, correctness + basic speedup metrics | No agent harness, no real-scale performance, no SYCL/Fortran |
-| ParEval-Repo | Repo-level translation tasks, `E(κ)` cost metric | Very early, limited execution model coverage |
+| ParEval | 420 problems, 7 execution models, correctness + basic speedup | No agent harness, no real-scale performance, no SYCL/Fortran |
+| ParEval-Repo | Repo-level translation tasks, `E(κ)` cost metric | Very early, limited execution-model coverage |
 | ParaCodex | Agent workflow prototype for OpenMP offloading | Single execution model, not a general benchmark |
-| HPC-Coder-V2 | Fine-tuned model for HPC tasks | Training data project, not an eval framework |
+| HPC-Coder-V2 | Fine-tuned model for HPC tasks | A training-data project, not an eval framework |
 | HeCBench | Hardware performance benchmarks | Not LLM-focused |
 
-This project extends ParEval's task library and drivers where useful, but builds an independent evaluation and agent harness layer.
+This project extends ParEval's task library and drivers where useful, but builds
+an independent evaluation and agent-harness layer on top.
+
+### "Nightmare" debugging problems
+
+A parallel track (inspired by [debug-gym's
+mini-nightmares](https://github.com/microsoft/debug-gym/blob/main/data/mini_nightmare/mini_nightmare.md))
+builds buggy HPC code that **edit-only agents struggle with** — bugs that are
+*semantically* subtle rather than syntactic:
+
+- compiles, runs, and produces *almost* correct output;
+- no syntax errors or obviously suspicious patterns;
+- requires a mental model outside the code (thread scheduling, physics
+  convention);
+- bug and symptom are far apart (e.g. a corrupted cell index in molecular
+  dynamics propagating through neighbor lists → forces → trajectories);
+- the fix is one line, but the reasoning to get there is long.
+
+Seeds are drawn from the the cluster [HPC-Dwarfs](https://github.com/HPC-Dwarfs)
+applications. RabbitCT is the first focus because it ships validation checks;
+MD-Bench is queued. See `problems/NIGHTMARES.md` for the catalog.
 
 ---
 
-## Known Risks and Open Questions
+## Known risks and open questions
 
-- **Reproducibility:** HPC timing on shared infrastructure is noisy. Statistical rigor (multiple runs, variance reporting, node isolation) is required.
-- **Agent sandboxing:** Giving real agents access to real cluster resources is a security and cost challenge. A clean isolation layer is needed before this can be opened to third parties.
-- **Scope creep:** Covering all execution models at launch is risky. The plan is to phase: nail MPI + CUDA depth first, then add SYCL, HIP, and Fortran in subsequent releases.
-- **LLM coverage of newer models:** SYCL and Fortran are underrepresented in training data — signal may be sparse at first.
-- **Benchmark saturation:** With better coding agents and LLMs, the performance of all will plateu and there would not be a meaningful difference between the models.
+- **Reproducibility:** HPC timing on shared infrastructure is noisy; statistical
+  rigor (multiple runs, variance reporting, node isolation) is required.
+- **Agent sandboxing:** giving real agents real cluster resources is a security
+  and cost challenge; a clean isolation layer is needed before opening to third
+  parties.
+- **Scope creep:** covering all execution models at launch is risky — the plan
+  is to nail MPI + CUDA depth first, then add SYCL, HIP, Fortran.
+- **Sparse signal for new models:** SYCL and Fortran are underrepresented in
+  training data.
+- **Benchmark saturation:** as agents/LLMs improve, scores may plateau and lose
+  discriminating power.
+
+## Status & next steps
+
+Early phase. Immediate next steps:
+
+1. Define the task-library schema (problem format, metadata, difficulty tiers).
+2. Harden the agent-harness runner and sandbox.
+3. Establish baseline results on ParEval problems to validate the infrastructure.
+4. Extend the task set with scientific-domain kernels.
+
+**Future directions:** finding optimal prompts, mixing local + remote models,
+optimizing for quality and token efficiency, and measuring how access to library
+docs (OpenMP, …) affects performance.
 
 ---
 
-## Status
+## Appendix: coding agents compared
 
-Early design phase. Immediate next steps:
-1. Define task library schema (problem format, metadata, difficulty tiers)
-2. Design agent harness runner and sandbox architecture
-3. Establish baseline results on ParEval problems to validate infrastructure
-4. Extend task set with scientific domain kernels
+Filtered for a preference toward **opinionated, fixed workflows** over
+plugin-heavy customization:
 
-## Future directions
-
-- How to find the optimal prompt
-- Mix of local and remote model
-- How to optimize the quality
-- How to optimize for efficient token usage
-- How access to library docs (OpenMP, ...) affect the performance
-
----
-
-## Coding Agents
-
-Here's a focused comparison table of the main CLI coding agents, filtered for your preference — **opinionated, fixed workflows** over plugin-heavy customization:
-
-| Agent | Local LLM (OpenAI-compat) | Workflow Philosophy | Customizability |
+| Agent | Local LLM (OpenAI-compat) | Workflow philosophy | Customizability |
 |---|---|---|---|
-| **Claude Code** | ✅ (via endpoint override) | Most opinionated. Autonomous loops: plan → edit → test → fix. Fixed agentic workflow with hooks and Agent Teams. | Low. Hooks and CLAUDE.md for context, but workflow is largely fixed by Anthropic. |
-| **Aider** | ✅ (via LiteLLM) | Pair-programmer style. Git-centric: every change auto-commits. Architect mode uses two models (planner + editor). | Low-medium. Fixed modes (architect, editor, ask, help). You configure which models fill roles, not the workflow. |
-| **Goose** | ✅ (OpenAI-compatible) | Autonomous, system-level. Complex multi-step task loops. Co-designed by Block + Anthropic on MCP. | Medium. MCP-extensible, but core workflow (plan → act → verify) is fixed. |
-| **OpenCode** | ✅ (LOCAL_ENDPOINT env var) | Dual-agent built-in: `build` (full access) vs `plan` (read-only). LSP integration baked in. | Medium-high. Custom agents via markdown files, 75+ providers. More flexible than the others on this list. |
-| **Gemini CLI** | ❌ (Gemini models only) | Opinionated around Google's stack. File ops, shell exec, web search baked in. 1M token context. | Low. Fixed Google toolchain. Least configurable. |
-| **Codex CLI** | ❌ (OpenAI models only) | Sandboxed execution, careful permissions model. Runs code in isolated env by default. | Low. Locked to OpenAI, no MCP, minimal config. |
-| **Plandex** | ✅ (OpenAI-compatible) | Long-horizon planning focus. 2M token context, diff sandbox before applying changes. Self-hosted server option. | Low-medium. Multi-model routing built in, but structured workflow is its selling point. |
+| **Claude Code** | ✅ (endpoint override) | Most opinionated. Autonomous plan → edit → test → fix, hooks, Agent Teams. | Low — workflow largely fixed by Anthropic. |
+| **Aider** | ✅ (LiteLLM) | Pair-programmer, git-centric (auto-commits). Architect mode = planner + editor. | Low–medium — fixed modes, you pick which models fill roles. |
+| **Goose** | ✅ | Autonomous, system-level, multi-step loops. MCP-based (Block + Anthropic). | Medium — MCP-extensible, core loop fixed. |
+| **OpenCode** | ✅ (`LOCAL_ENDPOINT`) | Dual-agent: `build` (full access) vs `plan` (read-only). LSP baked in. | Medium–high — custom agents via markdown, 75+ providers. |
+| **Gemini CLI** | ❌ (Gemini only) | Opinionated around Google's stack. 1M context. | Low. |
+| **Codex CLI** | ❌ (OpenAI only) | Sandboxed execution, careful permissions. | Low — no MCP, minimal config. |
+| **Plandex** | ✅ | Long-horizon planning, 2M context, diff sandbox before applying. | Low–medium — multi-model routing built in. |
 
-**Based on your criteria** (robust + fixed workflows, not plugin-driven), the strongest picks are:
+Strongest picks for robust + fixed workflows: **Claude Code** (most mature
+opinionated loop), **Aider** (battle-tested architect/editor split), **Plandex**
+(diff sandbox stages changes before touching files).
 
-- **Claude Code** — most mature opinionated workflow, best SWE-bench scores, least wiggle room by design
-- **Aider** — battle-tested, the architect/editor split is a genuinely fixed workflow that's hard to break, excellent git integration
-- **Plandex** — underrated, the diff sandbox means changes are staged before touching your files, very structured
+### Using Claude Code with a custom model
 
-
-## How to setup Claude code with custom model
-
-Claude code can be installed based on the docs: https://use-code.com/index
-
-Afterwards, a file in `~/.claude/settings.json` should be created with the following content. The settings values should be configured according to available models, API key, and endpoint.
+Install per the [docs](https://code.claude.com/docs/en/model-config), then
+create `~/.claude/settings.json`:
 
 ```json
 {
@@ -429,19 +298,17 @@ Afterwards, a file in `~/.claude/settings.json` should be created with the follo
 }
 ```
 
-Detailed reading is available at:
-- https://jonathansblog.co.uk/using-claude-code-with-local-llm-models-the-complete-guide
-- https://code.claude.com/docs/en/model-config
-- https://use-code.com/index
+Further reading:
+[model-config docs](https://code.claude.com/docs/en/model-config) ·
+[local-LLM guide](https://jonathansblog.co.uk/using-claude-code-with-local-llm-models-the-complete-guide).
 
-## How to setup Codex with custom model (NOT COMPLETE)
+> ⚠️ When *not* using a real Claude endpoint, Claude Code may inject extra
+> context/noise — verify and lock down settings.
 
-Check the official repo for the latest release: https://github.com/openai/codex/
+### Using Codex CLI with a custom model (incomplete)
 
-On Linux, look for `codex-x86_64-unknown-linux-musl.tar.gz` and unzip it. It will give you a binary file that you can move to `~/.local/bin/` folder so you can access it via terminal (given that the `~/.local/bin/` is added to your PATH environment variable).
-
-⚠️ Codex works with `/response` endpoint now. The `/chat` does not function:
-```bash
-Error loading config.toml: `wire_api = "chat"` is no longer supported.
-How to fix: set `wire_api = "responses"` in your provider config.
-```
+Grab the latest release from the [Codex repo](https://github.com/openai/codex/)
+(`codex-x86_64-unknown-linux-musl.tar.gz` on Linux), unpack the binary into a
+`PATH` directory (e.g. `~/.local/bin/`). Codex now requires the `/responses`
+endpoint — `wire_api = "chat"` is no longer supported, so set
+`wire_api = "responses"` in the provider config.

@@ -1,6 +1,32 @@
 # TODO — Evaluation Harness
 
-_No open items._
+- **pi agent has no iteration cap → runaway "long tail" solves.** Observed on the
+  4-problem PAR=16 local run: swe-mini (which has `step_limit: 80`) drained
+  cleanly, but two pi solves ran 2 h+ in endless debug loops and never
+  terminated, blocking Phase 1 from completing (the orchestrator waits on all
+  solves). pi's CLI has no step/iteration/turn flag (confirmed via `pi --help`).
+  Need a way to bound a pi solve. Candidate solutions to evaluate later:
+  - **Token-budget limit** — cap total tokens spent per solve. Endpoint-speed
+    *independent* (bounds the actual work/cost regardless of how slow the gateway
+    is) → preferred direction. pi exposes no native flag, so needs a mechanism
+    (e.g. track cumulative usage from the event stream and abort, or a
+    gateway-side per-request budget).
+  - **Wall-clock timeout** — simplest (wrap the solve call), but a *slow endpoint
+    inflates wall-clock*, so it would kill legitimately-progressing agents. Poor
+    fit on its own; only acceptable as a coarse last-resort backstop.
+
+- **Apply the pending size + step-limit batch (before the cluster run).** Held
+  back so it wouldn't disrupt the in-flight local runs; not yet applied.
+  - **Increase problem sizes** — kernels must run long enough to measure on fast
+    GPUs (A40/A100) and to actually fill them. RabbitCT (LolaBunny **and**
+    LolaOMP): `-s 256 → -s 1024` and `Reference256.vol → Reference1024.vol`;
+    tiled-gemm + stream-compact → larger matrix/array sizes. Edit each problem's
+    `PROMPT.md` (the size text **and** the example `solution.json`), bump the
+    `EVAL_SIZE` default, and revisit the GPU-util thresholds in
+    `checks/*/check.py` (they were tuned for a saturated GTX 1050).
+  - **swe-mini `step_limit: 80 → 150`** in `agents/docker/swe-mini/mini.yaml` —
+    its RabbitCT failures were step-budget exhaustion ("no solution produced"),
+    not bad code, so more steps should directly help.
 
 ---
 
