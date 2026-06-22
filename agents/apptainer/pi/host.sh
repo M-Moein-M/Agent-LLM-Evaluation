@@ -192,6 +192,7 @@ done
 # Host-side pass judgment (no GPU, re-runnable).
 if command -v python3 >/dev/null 2>&1; then
     python3 "$ROOT/checks/check_pass.py" --traces "$TRACE_ROOT"
+    python3 "$ROOT/checks/trace_stats.py" --traces "$TRACE_ROOT"
 else
-    echo "WARN: python3 not found on host — skipping pass checks. Run checks/check_pass.py manually." >&2
+    echo "WARN: python3 not found on host — skipping pass checks. Run checks/check_pass.py + trace_stats.py manually." >&2
 fi
