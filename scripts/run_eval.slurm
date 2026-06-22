@@ -3,7 +3,8 @@
 #SBATCH --gres=gpu:a40:1            # one GPU (matches your interactive salloc; swap a40->a100 if needed)
 #SBATCH --time=02:00:00
 #SBATCH --cpus-per-task=32          # >= EVAL_SOLVE_PAR: each parallel solve runs node/python + CUDA compiles on CPU
-#SBATCH --mem=64G                   # ADJUST: ~a few GB per concurrent solve
+# NOTE: do NOT set --mem on cluster (the cluster) — GPU jobs reject it; memory is
+# auto-allocated proportional to the number of GPUs requested.
 #SBATCH --output=eval-%j.out
 #
 # Run the agent-evaluation harness on one GPU via Apptainer.
