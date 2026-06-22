@@ -23,6 +23,39 @@ wsl -d Ubuntu-22.04 -- bash -lc 'cd /mnt/d/projects/nhr-agent-evaluation && \
 When invoking `wsl` from a non-WSL shell, prefix with `MSYS_NO_PATHCONV=1` so the
 outer shell doesn't rewrite the command string.
 
+### swe-mini full run — all 4 graded problems (reference invocation)
+
+The standard swe-mini benchmark over every problem that has a check, 10 rounds
+each, against the Qwen3.6 model (model id `Qwen/Qwen3.6-35B-A3B-FP8` when served
+via the NHR endpoint — it differs from `Qwen3.6-35B-A3B` depending on how the
+model is served):
+
+```bash
+MSYS_NO_PATHCONV=1 wsl -d Ubuntu-22.04 -- bash -lc 'cd /mnt/d/projects/nhr-agent-evaluation && \
+  EVAL_AGENT=swe-mini \
+  EVAL_MODELS="Qwen/Qwen3.6-35B-A3B-FP8" \
+  EVAL_ROUNDS=10 \
+  EVAL_PROBLEMS="RabbitCT-LolaBunny,RabbitCT-LolaOMP,tiled-gemm,stream-compact" \
+  EVAL_SOLVE_PAR=10 \
+  bash scripts/run_eval.sh'
+```
+
+40 jobs (4 problems × 10 rounds). `EVAL_SOLVE_PAR=10` runs all solves at once
+(shared GPU; solve is gateway-bound). The mini agent's per-task iteration cap is
+`agent.step_limit` in `agents/docker/swe-mini/mini.yaml` (currently **120**).
+
+> **When you scale the problem size, raise the per-command timeout too.**
+> `environment.timeout` in `agents/docker/swe-mini/solve.sh` (currently **600s**)
+> is a *per-command* cap. At the current **256³** RabbitCT scale a correct
+> build+run finishes well under it, so the timeouts you see are the agent's own
+> pathological kernels hanging — leave 600s, don't raise it (raising it just
+> lengthens the wall-clock tail on bad commands without helping correct ones).
+> But if you bump RabbitCT to **1024³** (the pending cluster change) or use much
+> larger GEMM / stream-compact sizes, a *legitimate* build+run can exceed 600s
+> and get clipped — increase `environment.timeout` proportionally to the new
+> scale at the same time you raise `EVAL_SIZE`. Same logic may apply to
+> `step_limit` if bigger problems need more iterations to converge.
+
 ---
 
 ## Repo layout
@@ -185,6 +218,67 @@ replaced by `_`.
 | `EVAL_SOLVE_PAR` | `4` | Max concurrent Phase-1 solve containers (pi only; shared GPU). `1` = serial. Phase 2 is always serial. |
 | `MODELS_CONFIG` | `agents/apptainer/pi/models.json` | Gateway `baseUrl` + `apiKey` + model IDs. |
 | `DATA_ROOT` | `<repo>/data` | Where bulk input data lives. |
+
+---
+
+## Pre-run smoke test (do this before every batch run)
+
+Before committing to a long batch (especially after a reboot, a gateway
+endpoint change, or a VPN switch), run these three quick checks in order. Each
+costs at most one problem-round; they catch the failures that otherwise only
+surface after the whole job list has burned GPU/gateway time.
+
+**1. Endpoint reachable + tool-calling works.** The gateway IP/host and the
+model id change depending on how the model is served (self-hosted sglang vs the
+NHR endpoint), and a VPN can make a reachable host unreachable. Probe it from a
+container so you test the *same* network path the agents use:
+
+```bash
+# Reachability + model list (substitute baseUrl/apiKey from models.json):
+BASE=$(jq -r '.providers.local.baseUrl' agents/apptainer/pi/models.json)
+KEY=$(jq -r '.providers.local.apiKey'  agents/apptainer/pi/models.json)
+curl -s "$BASE/models" -H "Authorization: Bearer $KEY" | jq '.data[].id'
+
+# Tool-calling actually parses (REQUIRED for pi — see Gotcha 4). Confirm
+# choices[0].message.tool_calls is NON-empty (not leaked into content):
+curl -s "$BASE/chat/completions" -H "Authorization: Bearer $KEY" \
+  -H 'Content-Type: application/json' -d '{
+    "model":"Qwen/Qwen3.6-35B-A3B-FP8",
+    "messages":[{"role":"user","content":"run ls via the bash tool"}],
+    "tools":[{"type":"function","function":{"name":"bash",
+      "parameters":{"type":"object","properties":{"command":{"type":"string"}}}}}]
+  }' | jq '.choices[0].message.tool_calls'
+```
+
+If `tool_calls` is empty but the call leaked into `content`, fix the sglang
+`--tool-call-parser` (Gotcha 4) before running **pi**. `swe-mini` (litellm)
+tolerates more, but a non-reachable endpoint fails both.
+
+**2. swe-mini one-round smoke** — small problem, no bulk data, one round:
+
+```bash
+MSYS_NO_PATHCONV=1 wsl -d Ubuntu-22.04 -- bash -lc 'cd /mnt/d/projects/nhr-agent-evaluation && \
+  EVAL_AGENT=swe-mini EVAL_MODELS="Qwen/Qwen3.6-35B-A3B-FP8" \
+  EVAL_ROUNDS=1 EVAL_PROBLEMS=tiled-gemm EVAL_SOLVE_PAR=1 bash scripts/run_eval.sh'
+```
+
+**3. pi one-round smoke** — same, swap the agent:
+
+```bash
+MSYS_NO_PATHCONV=1 wsl -d Ubuntu-22.04 -- bash -lc 'cd /mnt/d/projects/nhr-agent-evaluation && \
+  EVAL_AGENT=pi EVAL_MODELS="Qwen/Qwen3.6-35B-A3B-FP8" \
+  EVAL_ROUNDS=1 EVAL_PROBLEMS=tiled-gemm EVAL_SOLVE_PAR=1 bash scripts/run_eval.sh'
+```
+
+`tiled-gemm` is the right smoke problem: CUDA but tiny, with **no bulk dataset**
+(unlike RabbitCT's 4.5 GB input), so a round is fast. **Pass criterion:** the
+run ends with a `[PASS]` line for the freshly-created trace
+(`traces/tiled-gemm/<agent>/<model_tag>/<newest-timestamp>/round-1`). A
+`[FAIL] (build)` with "No solution.json produced" means the agent never
+executed a tool — re-check step 1 (endpoint/tool-calling), not the problem.
+
+Pre-flight, also confirm Docker is up (Gotcha 2): from WSL, `docker info`
+should succeed; if not, start Docker Desktop and wait for the daemon.
 
 ---
 
