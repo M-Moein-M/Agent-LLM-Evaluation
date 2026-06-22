@@ -3,7 +3,7 @@
 # This is mini-swe-agent's packaged default config (v2.3.0,
 # minisweagent/config/mini.yaml) reproduced verbatim, with TWO deliberate
 # changes for our batch/headless use:
-#   * agent.step_limit: 0 -> 80   (the default 0 = UNLIMITED; combined with our
+#   * agent.step_limit: 0 -> 120  (the default 0 = UNLIMITED; combined with our
 #     cost_tracking=ignore_errors the cost stays 0 so cost_limit never trips,
 #     which would let a stuck agent loop forever. A finite step cap is the guard.)
 #   * agent.cost_limit:  3. -> 5.
@@ -117,7 +117,7 @@ agent:
     ```bash
     anything
     ```
-  step_limit: 80
+  step_limit: 120
   cost_limit: 5.
   mode: confirm
 environment:
