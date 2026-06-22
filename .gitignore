@@ -20,6 +20,8 @@ build/
 *.sif
 
 traces/*
+models.json
+eval-*.out
 
 # Large per-problem input data (downloaded via problems/<name>/download-input.sh)
 data/
