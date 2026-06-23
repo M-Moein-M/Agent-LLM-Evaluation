@@ -12,6 +12,10 @@ original relative order**, and return the number of elements written. The kept
 elements must occupy `d_out[0 .. count)` in the same order they appear in
 `d_in`.
 
+This runs on an **NVIDIA A40** (Ampere, GA102; 48 GB GDDR6, 84 SMs). Beyond
+correctness, prefer an efficient implementation for that GPU — coalesced memory
+access, a work-efficient parallel scan, and enough occupancy to hide latency.
+
 Constraints:
 - Implement it yourself with your own CUDA kernels. Do **not** use Thrust or CUB
   (e.g. `thrust::copy_if`, `cub::DeviceSelect`) — the point is the parallel

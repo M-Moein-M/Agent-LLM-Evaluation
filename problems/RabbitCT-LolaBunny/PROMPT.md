@@ -4,6 +4,8 @@ Add a new GPU algorithm named `LolaBunnyGPU` that produces the same output as Lo
 
 Use **CUDA** (nvcc / the CUDA Runtime API) for the GPU implementation. Do **not** use OpenCL — the OpenCL runtime is not available in this environment and OpenCL device-query calls (e.g. `clGetPlatformIDs`) will hang. The CUDA toolkit and an NVIDIA GPU are available.
 
+The target GPU is an **NVIDIA A40** (Ampere, GA102; 48 GB GDDR6, 84 SMs). Beyond correctness, optimize the backprojection for that architecture — coalesced volume writes, efficient use of texture/`__ldg` reads for the projection images, and enough occupancy to hide memory latency.
+
 Build, run, and verify your implementation. Debug until it produces correct results. Use size 256 and `./RabbitInput/Reference256.vol` for verification with the `-c` flag.
 
 When finished, write a file `solution.json` in the problem root with the exact commands you used:
