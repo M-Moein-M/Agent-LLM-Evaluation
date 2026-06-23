@@ -75,6 +75,10 @@ agents/
                                solution.json + agent.jsonl. NO measurement.
       measure.sh               In-container Phase 2: replay build/run with GPU
                                sampling → .eval/ evidence + facts.json. NO judgment.
+                               Plus an OPTIONAL perf-grading block: if
+                               /grade/bench.cu is bound (problem has one), compile
+                               it against the agent kernel + cuBLAS and time both
+                               (nsys, else cudaEvent) → .eval/perf.log + kern_*.csv.
     swe-mini/                swe-mini agent (two-phase, mirrors pi):
       Dockerfile               CUDA base + Python + mini-swe-agent (litellm).
       host.sh                  Orchestrator (mirror of pi's).
@@ -97,6 +101,10 @@ checks/                      Agent-AGNOSTIC judging subsystem (outside agent wor
                              facts(), log_value(pattern), gpu_stats().
   <P>/check.py               Per-problem pass criteria: ordered stages + threshold
                              constants at top of file.
+  <P>/bench.cu               OPTIONAL harness-owned perf bench (tiled-gemm only so
+                             far). Bound read-only into measure.sh as /grade/bench.cu;
+                             never enters the agent workspace. See "Performance
+                             grading" below.
   check_pass.py              Driver: runs each problem's check over a trace →
                              .eval/pass_result.json.
   collect_results.py         Aggregates verdicts → pass@1 per (agent, model).
@@ -183,6 +191,11 @@ problem root:
 - `build.log`, `run.log` — untouched command output.
 - `gpu_info.txt` — `nvidia-smi -L` device identity.
 - `gpu_usage.csv` — GPU utilization sampled at 250 ms during the run.
+- `perf.log` — (perf-graded problems only) output of the harness bench:
+  `BENCH mse=…` (agent-vs-cuBLAS correctness at the graded size) and
+  `BENCH agent/cublas … ms_total=…` (cudaEvent timing).
+- `kern_agent.csv` / `kern_cublas.csv` — (perf-graded problems only, when nsys is
+  present) `nsys stats cuda_gpu_kern_sum` CSVs; the trusted timing source.
 - `pass_result.json` — the verdict (overall `passed` + per-stage results),
   written **host-side** by `check_pass.py`.
 
@@ -202,6 +215,64 @@ The `<agent>` segment sits right after `<problem>` so `check_pass.py` (which
 derives the problem from the first path segment) is unchanged, and pi/swe-mini
 runs of the same model never collide. `<model_tag>` is the model id with `/`
 replaced by `_`.
+
+---
+
+## Performance grading (tiled-gemm)
+
+Most problems are graded on **correctness + GPU usage** only. `tiled-gemm` is an
+optimization task, so it additionally grades **throughput** — and does so without
+trusting any number the agent prints.
+
+**The contract.** The agent is free to edit *any* file in the problem (split it,
+rewrite the harness, change the algorithm) with exactly one fixed signature it
+may not change: `void launchGemm(const float* dA, const float* dB, float* dC,
+int N)` in `src/gemm.cuh`. That is the only thing the grader links against.
+
+**How the number is produced (all harness-controlled, measure-time):**
+
+1. `host.sh` binds `checks/tiled-gemm/bench.cu` → `/grade/bench.cu` read-only
+   (only when that file exists — that's the gate that makes perf grading
+   per-problem opt-in). It lives under `checks/`, so it never lands in the
+   agent's workdir and the agent can't edit it.
+2. `measure.sh`'s perf block compiles `/grade/bench.cu` together with the agent's
+   kernel source(s) — `nvcc -O3 -arch=sm_86 -I src -lcublas`. The bench itself
+   declares `extern void launchGemm(...)`, enforcing the interface.
+3. The bench runs the agent kernel AND cuBLAS on one fixed, identical workload
+   (`N=4096`, 50 iters, 5 warmup), brackets the timed loop with
+   `cudaProfilerStart/Stop`, and prints a `BENCH mse=` (agent vs cuBLAS) plus
+   cudaEvent `ms_total`. If `nsys` is present it profiles both modes
+   (`--capture-range=cudaProfilerApi`) → `kern_agent.csv` / `kern_cublas.csv`.
+4. `checks/tiled-gemm/check.py`'s `perf` stage grades on the **ratio**
+   `cublas_ns / agent_ns` = agent throughput as a fraction of cuBLAS, preferring
+   the nsys CSV kernel time and falling back to the cudaEvent `ms_total`. It
+   first re-checks correctness (`BENCH mse` ≤ `BENCH_MSE_MAX`).
+
+**Why a ratio.** It assumes *no* operation count — any `2·N³`-style constant
+cancels — so the agent is free to find a cheaper algorithm, and the threshold is
+GPU-independent (self-calibrates to whatever device runs it) instead of a brittle
+per-GPU GFLOP/s number. Floor: `PERF_MIN_FRAC` (currently **0.15**, PROVISIONAL —
+the naive starter measures ~12.6% of cuBLAS, so this just rejects the unoptimized
+kernel; tune upward against real runs).
+
+**nsys** is not in the CUDA base image; the agent Dockerfiles/defs add it from
+NVIDIA's devtools apt repo as an isolated, non-fatal step. If it's missing the
+check transparently falls back to cudaEvent timing (the ratio is still valid —
+units cancel).
+
+**This is tiled-gemm-only right now.** `stream-compact` and the RabbitCT variants
+have no `bench.cu`, so their perf block is skipped and they stay correctness-only.
+cuBLAS is GEMM-specific; another problem would need its own bench + reference.
+
+### Smoke-testing the perf path — `scripts/smoke_perf.sh`
+
+Runs Phase 2 (measure) only, with the pristine starter `src/gemm.cu` standing in
+for an agent solution (no LLM). It checks an A40 is visible (aborts with an `srun`
+hint otherwise) and reports whether nsys is in the image, copies `tiled-gemm` to a
+tempdir, writes a `solution.json`, runs the apptainer measure container with
+`measure.sh` + `bench.cu` bound, then prints `perf.log` / the kern CSVs and runs
+`Check(...).evaluate()`. Use it after an image rebuild to confirm nsys is picked up
+and the verdict is sourced from `nsys` rather than the cudaEvent fallback.
 
 ---
 
@@ -421,3 +492,12 @@ docker build --pull --no-cache -t agent-eval-pi:latest \
 **7. `python3` is required on the host for the final checks.** If it's missing,
 `host.sh` skips judgment with a warning and you must run `check_pass.py`
 manually. `jq` is required only when `EVAL_MODELS` is unset.
+
+**8. nsys lives in the agent image — rebuild to get it; absence is non-fatal.**
+The perf grader prefers `nsys` kernel timing but falls back to cudaEvent
+`ms_total` when nsys is absent (the ratio is still valid). An image built before
+the nsys step was added will silently use the fallback. After (re)building, run
+`scripts/smoke_perf.sh` and confirm the perf verdict says `(nsys)` not
+`(cudaEvent)`. The nsys install is isolated + non-fatal on purpose so a devtools
+-repo hiccup can't break the agent toolchain — but that also means a failed nsys
+install is easy to miss; the smoke test is how you catch it.
