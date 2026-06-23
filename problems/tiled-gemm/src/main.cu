@@ -1,9 +1,13 @@
 // ===========================================================================
-//  VERIFICATION HARNESS — DO NOT MODIFY.
+//  Your iteration harness for `./gemm -c`: verifies correctness against a CPU
+//  reference over a fixed size sweep, then prints a self-measured throughput
+//  line so you can see progress while you optimize.
 //
-//  The evaluation replays `./gemm -c`. The set of matrix sizes, the CPU
-//  reference, and the error metric below are fixed and are how your solution
-//  is graded. Fix the implementation in src/gemm.cu, not this file.
+//  NOTE: this printed number is for YOUR convenience only — it is NOT how you
+//  are graded. The evaluation ignores it: it links your launchGemm() into its
+//  own benchmark and scores your throughput as a fraction of cuBLAS on a fixed
+//  workload (timed by Nsight Systems). You may edit this file freely; the only
+//  fixed contract is the launchGemm() signature in gemm.cuh.
 // ===========================================================================
 
 #include "gemm.cuh"
@@ -136,6 +140,11 @@ static void perf() {
         elapsed += ms / 1000.0;
     }
     printf("Perf: N=%d iters=%lld  total time [s]: %.2f\n", N, iters, elapsed);
+    // 2*N^3 FLOPs per GEMM, summed over all launches — the conventional GEMM
+    // throughput figure, printed for your own feedback. NOT the graded number
+    // (grading is external, vs cuBLAS; see the file header).
+    const double gflops = 2.0 * (double)N * N * N * (double)iters / elapsed / 1e9;
+    printf("Performance: %.2f GFLOP/s\n", gflops);
 
     cudaFree(dA);
     cudaFree(dB);

@@ -1,28 +1,46 @@
 """Pass check for the tiled-gemm problem.
 
 Stages (in order, build/run are fatal):
-    build → run → mse → gpu
+    build → run → mse → gpu → perf
 
-The agent must fix the tiled CUDA GEMM so `./gemm -c` reports a near-zero
-worst-case MSE across the verifier's fixed size sweep (which mixes tile
-multiples and non-multiples). The ``gpu`` stage guards against a CPU-only
-re-implementation.
+tiled-gemm is an OPTIMIZATION task: correctness is the floor (near-zero
+worst-case MSE across the verifier's fixed size sweep, which mixes tile
+multiples and non-multiples), and the graded goal is throughput.
+
+The throughput grade does NOT come from the agent's code. At measure time the
+harness compiles its own ``checks/tiled-gemm/bench.cu`` against the agent's
+kernel, runs the agent kernel AND cuBLAS on one fixed, identical workload, and
+times both with nsys (``.eval/kern_agent.csv`` / ``.eval/kern_cublas.csv``;
+cudaEvent fallback in ``.eval/perf.log``). The ``perf`` stage grades on the
+RATIO — agent throughput as a fraction of cuBLAS on the same device. That ratio
+assumes no operation count (any 2*N^3 constant cancels) and self-calibrates to
+whatever GPU runs it, so there is no brittle per-GPU GFLOP/s number. It also
+re-checks correctness at the graded size (bench MSE vs cuBLAS). The ``gpu`` stage
+guards against a CPU-only re-implementation.
 
 Tune the thresholds below; re-running ``checks/check_pass.py`` recomputes
 verdicts over existing traces with no GPU re-run.
 """
+
+import csv
 
 from eval_lib import ProblemCheck, StageResult
 
 
 class Check(ProblemCheck):
     # --- tunable thresholds -------------------------------------------------
-    MSE_MAX = 1e-2        # worst-case MSE in run.log must be <= this
-    GPU_MIN_AVG = 15.0    # mean utilization.gpu (%) over the run
-    GPU_MIN_PEAK = 40.0   # peak utilization.gpu (%) — guards against CPU fallback
+    MSE_MAX = 1e-2          # worst-case MSE in run.log must be <= this
+    GPU_MIN_AVG = 15.0      # mean utilization.gpu (%) over the run
+    GPU_MIN_PEAK = 40.0     # peak utilization.gpu (%) — guards against CPU fallback
+    BENCH_MSE_MAX = 1e-2    # agent-vs-cuBLAS MSE at the graded size (bench.cu)
+    # Minimum throughput as a FRACTION of cuBLAS on the same workload+device
+    # (1.0 == matches cuBLAS). PROVISIONAL floor that rejects naive/unoptimized
+    # kernels; being a ratio it is GPU-independent (unlike the old fixed GFLOP/s
+    # threshold). Tune against real runs.
+    PERF_MIN_FRAC = 0.15
 
     def stages(self):
-        return [self.build, self.run, self.mse, self.gpu]
+        return [self.build, self.run, self.mse, self.gpu, self.perf]
 
     def build(self) -> StageResult:
         return self.exit_stage("build", self.facts()["build"]["status"], fatal=True)
@@ -36,7 +54,7 @@ class Check(ProblemCheck):
         if v is None:
             detail = "no 'Mean Squared Error' line found in run.log"
         else:
-            detail = f"mse {v:g} <= {self.MSE_MAX:g}"
+            detail = f"mse {v:g} {'<=' if passed else '>'} {self.MSE_MAX:g}"
         return StageResult("mse", passed, v, detail)
 
     def gpu(self) -> StageResult:
@@ -52,3 +70,71 @@ class Check(ProblemCheck):
             f"{g['samples']} samples"
         )
         return StageResult("gpu", passed, g, detail)
+
+    # -- perf: agent throughput as a fraction of cuBLAS on a fixed workload --
+
+    def _kernel_total_ns(self, filename: str):
+        """Sum 'Total Time (ns)' over all kernels in an nsys cuda_gpu_kern_sum
+        CSV. Returns None if the file is missing/empty/unparseable (so the perf
+        stage can fall back to the cudaEvent timing)."""
+        path = self.eval_dir / filename
+        if not path.exists():
+            return None
+        with open(path, "r", encoding="utf-8", errors="replace", newline="") as fh:
+            reader = csv.reader(fh)
+            try:
+                header = next(reader)
+            except StopIteration:
+                return None
+            col = self._find_column(header, "total time")
+            if col is None:
+                return None
+            total = 0.0
+            seen = False
+            for row in reader:
+                if len(row) <= col:
+                    continue
+                cell = row[col].replace(",", "").strip()
+                try:
+                    total += float(cell)
+                    seen = True
+                except ValueError:
+                    continue
+        return total if seen else None
+
+    def perf(self) -> StageResult:
+        # Correctness at the graded size: the bench compares the agent kernel to
+        # cuBLAS on identical inputs. A missing line means the bench never ran
+        # (build failed / nvcc or bench absent) — no perf credit.
+        bench_mse = self.log_value(r"BENCH mse=\s*([0-9.eE+-]+)", file="perf.log")
+        if bench_mse is None:
+            return StageResult("perf", False, None,
+                               "no perf bench result (.eval/perf.log) — bench "
+                               "did not build/run")
+        if bench_mse > self.BENCH_MSE_MAX:
+            return StageResult("perf", False, bench_mse,
+                               f"bench MSE {bench_mse:g} > {self.BENCH_MSE_MAX:g} "
+                               "(kernel incorrect at graded size)")
+
+        # Throughput ratio. Prefer nsys kernel time; fall back to the bench's
+        # cudaEvent ms_total if the nsys CSVs are absent.
+        agent_ns = self._kernel_total_ns("kern_agent.csv")
+        cublas_ns = self._kernel_total_ns("kern_cublas.csv")
+        source = "nsys"
+        if agent_ns is None or cublas_ns is None:
+            agent_ns = self.log_value(r"BENCH agent .*ms_total=\s*([0-9.eE+-]+)",
+                                      file="perf.log")
+            cublas_ns = self.log_value(r"BENCH cublas .*ms_total=\s*([0-9.eE+-]+)",
+                                       file="perf.log")
+            source = "cudaEvent"
+
+        if not agent_ns or not cublas_ns or agent_ns <= 0:
+            return StageResult("perf", False, None,
+                               "perf timing unavailable (no nsys CSVs and no "
+                               "BENCH ms_total in perf.log)")
+
+        frac = cublas_ns / agent_ns  # agent throughput / cuBLAS throughput
+        passed = frac >= self.PERF_MIN_FRAC
+        detail = (f"{frac * 100:.1f}% of cuBLAS ({source}; "
+                  f">= {self.PERF_MIN_FRAC * 100:.0f}%), bench MSE {bench_mse:g}")
+        return StageResult("perf", passed, frac, detail)

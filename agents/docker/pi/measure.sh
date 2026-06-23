@@ -157,3 +157,50 @@ fi
 # Write facts.json
 # ---------------------------------------------------------------------------
 write_result
+
+# ---------------------------------------------------------------------------
+# Optional perf grading: harness-owned bench + cuBLAS reference, timed by nsys.
+# Runs ONLY when a grade bench is bound in for this problem (host.sh binds
+# checks/<problem>/bench.cu -> /grade/bench.cu). Other problems and the
+# correctness path above are untouched. Emits raw evidence to .eval/; the
+# host-side check computes the agent-vs-cuBLAS kernel-time RATIO — no
+# operation-count assumption, self-calibrating to whatever GPU runs it.
+# ---------------------------------------------------------------------------
+if [ -f /grade/bench.cu ] && command -v nvcc >/dev/null 2>&1; then
+	PERF_LOG="$EVAL_DIR/perf.log"
+	{
+		echo "== perf grading: build gemm_bench from harness bench + agent kernel =="
+		# Agent kernel sources = every src/*.cu WITHOUT its own int main, so the
+		# agent stays free to split the kernel across files; the bench owns main().
+		KSRCS=$(grep -L 'int main' src/*.cu 2>/dev/null | tr '\n' ' ')
+		echo "agent kernel sources: $KSRCS"
+		set -x
+		# -arch=sm_86 targets the A40 (Ampere GA102) explicitly — deterministic
+		# and independent of build-time GPU detection (override BENCH_ARCH for
+		# other GPUs).
+		nvcc -O3 -std=c++14 -arch="${BENCH_ARCH:-sm_86}" /grade/bench.cu $KSRCS \
+			-I src -o gemm_bench -lcublas
+		set +x
+	} > "$PERF_LOG" 2>&1
+	if [ -x ./gemm_bench ]; then
+		if command -v nsys >/dev/null 2>&1; then
+			# --capture-range=cudaProfilerApi: the report holds ONLY the timed
+			# loop (the bench brackets it with cudaProfilerStart/Stop) — no
+			# warmup, no allocation, no H2D copies.
+			for m in agent cublas; do
+				nsys profile --force-overwrite true \
+					--capture-range=cudaProfilerApi --capture-range-end=stop \
+					-o "$EVAL_DIR/prof_$m" ./gemm_bench "$m" >> "$PERF_LOG" 2>&1 || true
+				nsys stats --report cuda_gpu_kern_sum --format csv \
+					"$EVAL_DIR/prof_$m.nsys-rep" > "$EVAL_DIR/kern_$m.csv" \
+					2>>"$PERF_LOG" || true
+			done
+		else
+			echo "nsys absent — host check falls back to bench cudaEvent timing" >> "$PERF_LOG"
+			./gemm_bench agent  >> "$PERF_LOG" 2>&1 || true
+			./gemm_bench cublas >> "$PERF_LOG" 2>&1 || true
+		fi
+	else
+		echo "gemm_bench did not build — no perf score (correctness still graded)" >> "$PERF_LOG"
+	fi
+fi

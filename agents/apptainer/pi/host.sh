@@ -142,6 +142,14 @@ measure_job() {
         DATA_BIND=(--bind "$DATA_ROOT/$PROBLEM_NAME/RabbitInput:/problem/RabbitInput:ro")
     fi
 
+    # Harness-owned perf bench (per problem). Bound read-only so the agent can
+    # never edit what grades it; measure.sh runs the nsys/cuBLAS perf grading
+    # only when this file is present.
+    local GRADE_BIND=()
+    if [[ -f "$ROOT/checks/$PROBLEM_NAME/bench.cu" ]]; then
+        GRADE_BIND=(--bind "$ROOT/checks/$PROBLEM_NAME/bench.cu:/grade/bench.cu:ro")
+    fi
+
     apptainer exec --nv \
         --env "EVAL_AGENT=$AGENT" \
         --env "EVAL_MODEL=$MODEL" \
@@ -151,6 +159,7 @@ measure_job() {
         --bind "$WORK_DIR:/problem" \
         --bind "$MEASURE_SCRIPT:/measure.sh:ro" \
         "${DATA_BIND[@]}" \
+        "${GRADE_BIND[@]}" \
         "$AGENT_SIF" /bin/bash -l /measure.sh /problem
 
     # Host-side trace extraction (no container needed — Apptainer wrote everything

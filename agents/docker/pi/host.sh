@@ -125,6 +125,14 @@ measure_job() {
         DATA_MOUNT=(-v "$DATA_ROOT/$PROBLEM_NAME/RabbitInput:/problem/RabbitInput:ro")
     fi
 
+    # Harness-owned perf bench (per problem). Mounted read-only so the agent can
+    # never edit what grades it; measure.sh runs the nsys/cuBLAS perf grading
+    # only when this file is present.
+    local GRADE_MOUNT=()
+    if [[ -f "$ROOT/checks/$PROBLEM_NAME/bench.cu" ]]; then
+        GRADE_MOUNT=(-v "$ROOT/checks/$PROBLEM_NAME/bench.cu:/grade/bench.cu:ro")
+    fi
+
     docker run --rm \
         --gpus all \
         -e "EVAL_AGENT=$AGENT" \
@@ -135,6 +143,7 @@ measure_job() {
         -v "$WORK_DIR:/problem" \
         -v "$MEASURE_SCRIPT:/measure.sh:ro" \
         "${DATA_MOUNT[@]}" \
+        "${GRADE_MOUNT[@]}" \
         "$IMAGE" /bin/bash -l /measure.sh /problem
 
     # ----------------------------------------------------------------
