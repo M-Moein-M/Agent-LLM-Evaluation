@@ -38,6 +38,9 @@ EVAL_VARIANT="${EVAL_VARIANT:-LolaBunnyGPU}"
 # real ceiling is node CPU/RAM + gateway throughput, not GPU memory — so this can
 # go high (32+). Set to 1 for fully-serial.
 EVAL_SOLVE_PAR="${EVAL_SOLVE_PAR:-4}"
+# Hard cap on assistant turns per solve (pi fork's --step-limit). Forwarded into
+# the container and consumed by solve.sh.
+EVAL_STEP_LIMIT="${EVAL_STEP_LIMIT:-120}"
 DATA_ROOT="${DATA_ROOT:-$ROOT/data}"
 
 DATE_TAG=$(date +%Y%m%d-%H%M%S)
@@ -58,7 +61,11 @@ trap 'rm -rf "$WORK_ROOT"' EXIT
 
 if [ -z "${EVAL_MODELS:-}" ]; then
     if command -v jq >/dev/null 2>&1; then
-        EVAL_MODELS=$(jq -r '.providers[].models[].id' "$MODELS_CONFIG" | paste -sd, -)
+        # Emit provider-qualified ids (provider/id). pi 0.80.2 resolves a bare id
+        # like "DeepSeek-V4-Flash" against its built-in catalog first (-> wrong
+        # provider, "No API key"), so the provider prefix is required to bind the
+        # model to our custom providers in models.json.
+        EVAL_MODELS=$(jq -r '.providers | to_entries[] | .key as $p | .value.models[] | "\($p)/\(.id)"' "$MODELS_CONFIG" | paste -sd, -)
     else
         echo "ERROR: EVAL_MODELS is not set and jq is unavailable to parse $MODELS_CONFIG" >&2
         exit 1
@@ -117,6 +124,7 @@ solve_job() {
         --env "EVAL_ROUND=$ROUND" \
         --env "EVAL_SIZE=$EVAL_SIZE" \
         --env "EVAL_VARIANT=$EVAL_VARIANT" \
+        --env "EVAL_STEP_LIMIT=$EVAL_STEP_LIMIT" \
         --bind "$WORK_DIR:/problem" \
         --bind "$SOLVE_SCRIPT:/solve.sh:ro" \
         "${DATA_BIND[@]}" \

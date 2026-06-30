@@ -15,6 +15,9 @@ set -euo pipefail
 
 PROBLEM_DIR=$1
 EVAL_MODEL="${EVAL_MODEL:-unknown-model}"
+# Hard cap on assistant turns per prompt (pi fork's --step-limit flag). Bounds
+# runaway solve loops so a model that never converges can't burn the whole job.
+EVAL_STEP_LIMIT="${EVAL_STEP_LIMIT:-120}"
 
 mkdir -p /root/.pi/agent
 cd "$PROBLEM_DIR"
@@ -36,7 +39,7 @@ pi --list-models
 # message on every token, which is quadratic and was ~99.7% of a 272MB trace.
 # The final content is preserved losslessly in message_end / tool_execution_end /
 # agent_end. `|| true` keeps the empty-output fail path working under pipefail.
-pi -p --mode json --model "$EVAL_MODEL" "$PROMPT" 2>/dev/null \
+pi -p --mode json --step-limit "$EVAL_STEP_LIMIT" --model "$EVAL_MODEL" "$PROMPT" 2>/dev/null \
 	| { grep --line-buffered -Ev '"type":"(message_update|tool_execution_update)"' || true; } \
 	| tee ~/agent.jsonl
 cp ~/agent.jsonl "$PROBLEM_DIR"
