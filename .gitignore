@@ -23,6 +23,15 @@ traces/*
 models.json
 eval-*.out
 
+# Run outputs / analysis artifacts (generated per run, not source)
+results/
+report.md
+results.md
+
+# Work-in-progress, deliberately kept out of git for now
+problems/MD-Bench/
+agents/apptainer/kimi/
+
 # Large per-problem input data (downloaded via problems/<name>/download-input.sh)
 data/
 # pi agent local fork: vendored source + prebuilt dist + archive.
