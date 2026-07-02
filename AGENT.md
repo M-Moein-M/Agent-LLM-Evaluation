@@ -87,8 +87,26 @@ agents/
       measure.sh               In-container Phase 2: replay build/run with GPU
                                sampling → .eval/ evidence + facts.json. NO judgment.
       mini.yaml                Prompt templates + finite step_limit.
-  apptainer/                 LEGACY (pi, claude). Not part of the Docker pipeline.
-                             NOTE: models.json default still lives here (see below).
+  apptainer/                 CLUSTER runtime (SLURM / cluster A40), selected by
+                             CONTAINER_RUNTIME=apptainer. Same two-phase contract
+                             as docker/. Agents: pi, swe-mini, claude, kimi.
+      claude/                Claude Code agent (apptainer-only — no docker twin yet):
+        agent.def              CUDA devel base + Claude Code native install + nsys.
+        host.sh                Orchestrator (mirror of swe-mini's apptainer host.sh).
+        solve.sh               Phase 1: run Claude Code headless against the NHR
+                               gateway (Anthropic protocol) → source +
+                               solution.json + agent.stream.jsonl. --max-turns cap.
+                               Reuses docker/swe-mini/measure.sh for Phase 2.
+      kimi/                  Kimi Code agent (apptainer-only — no docker twin yet):
+        agent.def              CUDA devel base + Kimi Code native install
+                               (KIMI_INSTALL_DIR=/usr/local → /usr/local/bin/kimi) + nsys.
+        host.sh                Orchestrator (mirror of claude's apptainer host.sh).
+        solve.sh               Phase 1: run Kimi Code headless against the NHR
+                               gateway (OpenAI-compat — /v1 kept) → source +
+                               solution.json + agent.stream.jsonl. Cap via config.toml
+                               loop_control.max_steps_per_turn. Reuses
+                               docker/swe-mini/measure.sh for Phase 2.
+                             NOTE: models.json default still lives in apptainer/pi/.
 
 problems/<P>/                One directory per problem.
   PROMPT.md                  Task description + the solution.json contract the
@@ -128,8 +146,15 @@ backprojection, the default), **RabbitCT-LolaOMP** (OpenMP variant),
 
 ## How a run works end-to-end
 
-`scripts/run_eval.sh` is two-stage and selects the agent via `EVAL_AGENT`
-(default `pi`):
+`scripts/run_eval.sh` is staged and selects the agent via `EVAL_AGENT`
+(default `swe-mini`):
+
+0. **Stage 0 (reachability preflight).** Probes every id in `EVAL_MODELS`
+   against the gateway `baseUrl` (1-token completion, ~30 s budget) and aborts
+   early with a clear error if any is unreachable — so a mis-served model fails
+   in seconds, not hours into a batch. It also doubles as the per-wave gate that
+   the currently-served model is live (the gateway serves one model at a time).
+   Skip with `EVAL_SKIP_PREFLIGHT=1`.
 
 1. **Stage 1 (data prep).** Ensures each RabbitCT variant's bulk input is
    present. One canonical copy lives in `data/RabbitCT/`; each requested variant
@@ -164,6 +189,119 @@ swe-mini now mirrors pi: `solve.sh` (Phase 1, runs the mini agent → source +
 solution.json + agent.traj.json, parallelizable up to `EVAL_SOLVE_PAR`) and
 `measure.sh` (Phase 2, replay build/run with GPU sampling, strictly serial).
 `measure.sh` is agent-agnostic — byte-for-byte the same logic as pi's.
+
+### claude: token-budget & thinking decisions
+
+Claude Code talks the Anthropic protocol, where **`max_tokens` is a required
+field on every `/v1/messages` request** — unlike swe-mini's OpenAI-compat path,
+which can omit it and let the server's own ceiling govern. So Claude Code always
+RESERVES a fixed output slice against the model's single shared window
+(`max_model_len = 262144 = input + output`). You cannot disable this; unset just
+defaults Claude Code to 32000, and any value set is clamped to ≤128000.
+
+**Output cap — `CLAUDE_CODE_MAX_OUTPUT_TOKENS=64000` (the `EVAL_MAX_OUTPUT_TOKENS`
+default).** The reservation trades directly against input headroom
+(`headroom ≈ 262144 − cap`). Measured failure modes on Qwen3.6 + tiled-gemm:
+- 32K (default): a verbose `thinking` block burns the whole budget and the turn
+  stops with `stop_reason=max_tokens` BEFORE writing `solution.json` (truncated).
+- 128K (=150K clamped): once conversation input grows past ~134K, `input+cap`
+  exceeds 262144 and every call 400s with `ContextWindowExceededError` — fatal,
+  since auto-compaction is disabled (no recovery).
+- 64K: holds Qwen's largest thinking turns (~31K) plus the answer, and leaves
+  ~186K input headroom — tiled-gemm reached ~119K input over ~30 turns with no
+  400. This is the chosen value.
+
+**Thinking — NOT controllable from the Claude Code side for this model.** Qwen3.6
+is a reasoning model that free-runs native chain-of-thought (observed 12K–34K-token
+thinking blocks per turn), which the gateway surfaces as Anthropic `thinking`
+content blocks. `MAX_THINKING_TOKENS` (→ `thinking.budget_tokens`) is **a no-op
+here**: Claude Code only emits a thinking budget for models it recognizes as
+extended-thinking-capable, and our custom-named Qwen is not in its registry, so it
+sends no thinking field at all. Verified empirically — forwarding
+`EVAL_MAX_THINKING_TOKENS=4096` still produced 24K-token thinking blocks (3 gemm
+runs all died at ~166–176K context with `"Prompt is too long"`). A raw-request
+probe *does* show the API-layer lever exists (litellm maps `budget_tokens`: ≲1500
+→ `'minimal'`, which this vLLM build **400s** on; ≈2048 → `low`; ≈4096 → `medium`;
+≥8192 → `high`), but Claude Code never pulls it for this model. The only lever that
+actually bounds Qwen thinking is Qwen-native (`/no_think` /
+`chat_template_kwargs.enable_thinking`), which Claude Code cannot inject and which
+would disable thinking entirely + alter the task prompt (fairness concern). So in
+practice thinking is **always max** for claude+Qwen, which is exactly why the 64K
+output cap (≥ the ~34K thinking peak) is required and cannot be lowered. The
+`EVAL_MAX_THINKING_TOKENS` knob stays plumbed for a future model Claude Code *does*
+recognize, but has no effect on the current served model.
+
+**Why no compaction safety net.** `DISABLE_AUTO_COMPACT=1` for cross-agent
+fairness (pi/swe-mini have no compaction), so a run that exhausts 262144 fails on
+context exhaustion — the analog of the others running out of steps — rather than
+silently summarizing to continue. The modest 64K cap keeps that wall from being
+hit prematurely by an oversized reservation.
+
+### kimi: openai-compat, env-config, config.toml step-cap
+
+Kimi Code (Moonshot's terminal agent) is the simplest of the harnesses to wire up,
+because it speaks the **OpenAI-compatible protocol natively** — none of claude's
+Anthropic-protocol baggage applies:
+
+- **No /v1 stripping** — the gateway `baseUrl` is used as-is (`/v1` included).
+- **You MUST cap the output budget (`EVAL_MAX_OUTPUT_TOKENS`, default 64000).** Kimi
+  derives `max_completion_tokens` as `min(context, 131072)` and so requests **131072**
+  on every call by default. That is rejected *before any work happens*: the NHR
+  gateway 429s ("tokens" rate limit, 100k/min) and Qwen3.6-27B 400s ("max 128000
+  completion"). `solve.sh` exports `KIMI_MODEL_MAX_COMPLETION_TOKENS=$EVAL_MAX_OUTPUT_TOKENS`
+  (read provider-agnostically in `resolveCompletionBudget`, ahead of the context-based
+  fallback). NB: setting `KIMI_MODEL_MAX_CONTEXT_SIZE` alone does NOT help — with no
+  hard cap the request is still `min(context, 131072) = 131072`. 64000 mirrors claude's
+  working value on this gateway. So claude's `CLAUDE_CODE_MAX_OUTPUT_TOKENS` saga is
+  NOT moot — kimi has the same constraint, just expressed through a different knob.
+- **Model config via the `KIMI_MODEL_*` env channel** (set in `solve.sh`):
+  `KIMI_MODEL_NAME` (=`EVAL_MODEL`), `KIMI_MODEL_API_KEY`, `KIMI_MODEL_PROVIDER_TYPE=openai`,
+  `KIMI_MODEL_BASE_URL`. When `KIMI_MODEL_NAME` is set Kimi Code synthesizes an
+  in-memory provider + model alias and makes it the `default_model`, so there's no
+  provider block in `config.toml` and no `-m` flag. (Ordinary `OPENAI_API_KEY`-style
+  vars are deliberately *not* read from the shell — this family is the one exception.)
+- **Auto-approval is automatic in `-p` mode.** Print mode installs an approval
+  handler that approves every tool call (the analog of claude's `bypassPermissions`),
+  so there is no `--allowedTools` / `--permission-mode` flag and no `[permission]`
+  block to write. Don't pass `--yolo`/`--auto`: print mode *rejects* them.
+- **The enforceable cap lives in `config.toml`,** not a flag: `solve.sh` writes
+  `[loop_control] max_steps_per_turn = $EVAL_MAX_TURNS`. In `-p` mode the run is a
+  single turn, so this bounds the whole agentic loop — parity with swe-mini's
+  `step_limit` and claude's `--max-turns`. Exceeding it raises
+  `LOOP_MAX_STEPS_EXCEEDED` (the analog of running out of steps).
+- **No compaction caveat needed.** Unlike claude (where `DISABLE_AUTO_COMPACT=1` is
+  set for fairness), Kimi's `micro_compaction` is on by default; if cross-agent
+  fairness later demands it be disabled, set
+  `KIMI_CODE_EXPERIMENTAL_MICRO_COMPACTION=false`.
+- **Install / HOME.** The native installer goes to `/usr/local/bin/kimi`
+  (`KIMI_INSTALL_DIR=/usr/local`), so — unlike claude's `/root/.local` binary — the
+  per-job staging `--home` can't shadow it. Each job still gets its own HOME so the
+  `~/.kimi-code` data root (config.toml, sessions, logs) is isolated across parallel
+  solves. `KIMI_INSTALL_DIR` (binary) and `KIMI_CODE_HOME` (data root, defaults to
+  `$HOME/.kimi-code`) are distinct.
+
+**Smoke status (2026-06-29, tiled-gemm + Qwen3.6-35B on gateway).** The harness
+mechanically WORKS end-to-end: kimi connects under the `openai` provider type,
+auto-approves tools in `-p` mode, Reads sources, runs `make`/`nvcc`, runs the GPU
+binary, and writes a 14 KB `agent.stream.jsonl`. It still ends `[FAIL] (build)`
+because it hit the **same Qwen runaway-thinking wall that banks tiled-gemm as a FAIL
+for claude+Qwen** (see [[gemm-claude-context-wall]] in memory): Qwen free-ran native
+chain-of-thought that exhausted the 64000 output budget in a single turn and returned
+thinking-only content (`finishReason=truncated, rawFinishReason=length`), which kimi
+treats as a fatal `provider.api_error` — so it never wrote `solution.json`. This is a
+model/endpoint constraint, not a harness bug. Levers (untried / uncertain): raise
+`EVAL_MAX_OUTPUT_TOKENS` toward ~96000 (must stay < the 100k/min TPM); or kimi's
+thinking knobs `KIMI_MODEL_THINKING_MODE=off` / `KIMI_MODEL_THINKING_EFFORT=low` — but
+the openai path expresses thinking as `reasoning_effort` (which models.json marks
+`supportsReasoningEffort:false`) and injects no Qwen-native `enable_thinking`, so these
+are likely no-ops for Qwen's native CoT, exactly as `MAX_THINKING_TOKENS` was for
+claude. A clean green PASS is easiest to demonstrate against a **non-thinking model**
+(e.g. Llama-3.3-70B, `EVAL_PROVIDER=llama`).
+
+> `trace_stats.py` parses kimi's `agent.stream.jsonl` as if it were claude's
+> stream-json (the schemas differ — kimi emits `{role,content,tool_calls}` objects),
+> so its token/step counts read 0 for kimi until a `parse_kimi` branch is added. It's
+> best-effort + per-round try/except, so this is non-fatal.
 
 ### The solution.json contract
 
@@ -201,7 +339,8 @@ problem root:
 
 Alongside `.eval/` in the round dir: `changed_diff.txt` (diff vs the pristine
 problem), `solution.json`, the changed sources + any artifact, and the agent's
-own trace — `agent.jsonl` (pi) or `agent.traj.json` (swe-mini).
+own trace — `agent.jsonl` (pi), `agent.traj.json` (swe-mini), or
+`agent.stream.jsonl` (claude; Claude Code `--output-format stream-json`).
 
 ### Where output goes
 
@@ -280,7 +419,9 @@ and the verdict is sourced from `nsys` rather than the cudaEvent fallback.
 
 | Variable | Default | Description |
 |---|---|---|
-| `EVAL_AGENT` | `pi` | Which agent harness (`pi` or `swe-mini`). |
+| `EVAL_AGENT` | `swe-mini` | Which agent harness (`swe-mini`, `claude`, `kimi`, or `pi`). pi is dropped from the current A40 run (no enforceable step cap). |
+| `EVAL_MAX_TURNS` | `120` | claude/kimi only: the enforceable iteration cap (analogous to swe-mini's `step_limit`). claude → Claude Code `--max-turns`; kimi → config.toml `loop_control.max_steps_per_turn` (one turn in `-p` mode, so it bounds the whole run). |
+| `EVAL_SKIP_PREFLIGHT` | `0` | Set `1` to skip the Stage-0 gateway reachability probe. |
 | `EVAL_MODELS` | (all from `models.json`) | Comma-separated model IDs. Needs `jq` if unset. |
 | `EVAL_ROUNDS` | `20` | Rounds per model. |
 | `EVAL_PROBLEMS` | `RabbitCT-LolaBunny` | Comma-separated problem names. |
