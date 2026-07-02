@@ -30,8 +30,11 @@ tree -a
 # Skip mini's first-run interactive setup wizard (no TTY in the container) —
 # we supply the model + key + base URL via env and -c overrides below.
 export MSWEA_CONFIGURED=true
-export OPENAI_API_KEY="$(jq -r '.providers.local.apiKey' /models.json)"
-API_BASE="$(jq -r '.providers.local.baseUrl' /models.json)"
+# EVAL_PROVIDER selects which providers.<name> block in /models.json supplies the
+# baseUrl + apiKey (default "local" = gateway; "llama" = the host endpoint).
+EVAL_PROVIDER="${EVAL_PROVIDER:-local}"
+export OPENAI_API_KEY="$(jq -r ".providers.${EVAL_PROVIDER}.apiKey" /models.json)"
+API_BASE="$(jq -r ".providers.${EVAL_PROVIDER}.baseUrl" /models.json)"
 
 # NOTE on max output tokens: we deliberately do NOT pass max_tokens here. pi's
 # per-model maxTokens in models.json (e.g. 262144 for Qwen3.6-35B-A3B) is pi's
@@ -41,6 +44,38 @@ API_BASE="$(jq -r '.providers.local.baseUrl' /models.json)"
 # model supports at most 256000") and kills every request. The server's own cap
 # (= context window) is the correct ceiling, so we let it govern by omission.
 #
+# Per-provider model_kwargs. The "llama" endpoint (host sglang) serves
+# Llama-3.3-70B, which — unlike the gateway models — needs its tool calls
+# pinned two ways, or mini's function-calling agent dies:
+#   1. Left to choose, it writes the call as a fenced ```json block inside
+#      `content` whenever it reasons first; sglang's parser (correctly) ignores
+#      that, so mini sees NO tool_calls and aborts (RepeatedFormatError).
+#   2. With a plain tool_choice=required it emits MULTIPLE tool_calls in one turn;
+#      sglang then rejects the follow-up ("This model only supports single
+#      tool-calls at once!") and mini crashes.
+# Pinning tool_choice to the named `bash` function (mini's only tool; task
+# completion is itself a `bash` echo) forces exactly ONE structured call per turn,
+# fixing both. Set via dotted `-c` leaves — the same mechanism that already deep-
+# merges api_base/custom_llm_provider into model_kwargs, so the nested tool_choice
+# dict lands without clobbering its siblings. Scoped to EVAL_PROVIDER=llama so the
+# gateway (Qwen) runs keep tool_choice=auto and stay comparable.
+EXTRA_OPTS=()
+if [ "${EVAL_PROVIDER:-local}" = "llama" ]; then
+	EXTRA_OPTS+=(-c "model.model_kwargs.tool_choice.type=function")
+	EXTRA_OPTS+=(-c "model.model_kwargs.tool_choice.function.name=bash")
+fi
+
+# Optional non-default action mode. When EVAL_MODEL_CLASS is set (e.g.
+# "litellm_textbased"), select that mini model class so actions are parsed from a
+# ```mswea_bash_command``` block in the model's TEXT output instead of structured
+# JSON tool-calls. Needed for models whose tool-call argument serialization is
+# broken on the gateway (gpt-oss-120b emits command strings that aren't valid JSON
+# -> RepeatedFormatError). The matching prompt config must be bound at /mini.yaml
+# (host.sh: MINI_CONFIG=.../mini_textbased.yaml). Unset -> default toolcall path.
+if [ -n "${EVAL_MODEL_CLASS:-}" ]; then
+	EXTRA_OPTS+=(-c "model.model_class=$EVAL_MODEL_CLASS")
+fi
+
 # mini's default per-command timeout is 30s — far too short for CUDA builds —
 # so bump environment.timeout. cwd is set to the problem dir so each (stateless)
 # command starts there. cost_tracking=ignore_errors because our gateway models
@@ -54,6 +89,7 @@ mini -y --exit-immediately \
 	-c "model.cost_tracking=ignore_errors" \
 	-c "environment.cwd=$PROBLEM_DIR" \
 	-c "environment.timeout=600" \
+	"${EXTRA_OPTS[@]}" \
 	-t "$PROMPT" \
 	-o ~/agent.traj.json || true
 cp ~/agent.traj.json "$PROBLEM_DIR" 2>/dev/null || true

@@ -16,13 +16,16 @@ TRACE_ROOT="$ROOT/traces"
 AGENT_SIF="${AGENT_SIF:-$ROOT/agents/apptainer/swe-mini/agent.sif}"
 SOLVE_SCRIPT="$ROOT/agents/docker/swe-mini/solve.sh"
 MEASURE_SCRIPT="$ROOT/agents/docker/swe-mini/measure.sh"
-MINI_CONFIG="$ROOT/agents/docker/swe-mini/mini.yaml"
+MINI_CONFIG="${MINI_CONFIG:-$ROOT/agents/docker/swe-mini/mini.yaml}"
 MODELS_CONFIG="${MODELS_CONFIG:-$ROOT/agents/apptainer/pi/models.json}"
 EVAL_ROUNDS="${EVAL_ROUNDS:-20}"
 EVAL_PROBLEMS="${EVAL_PROBLEMS:-RabbitCT-LolaBunny}"
 EVAL_SIZE="${EVAL_SIZE:-256}"
 EVAL_VARIANT="${EVAL_VARIANT:-LolaBunnyGPU}"
 EVAL_SOLVE_PAR="${EVAL_SOLVE_PAR:-4}"
+# Selects providers.<name> in models.json (default "local" = gateway; "llama" =
+# host). Forwarded via --env below — apptainer exec does NOT inherit host env.
+EVAL_PROVIDER="${EVAL_PROVIDER:-local}"
 DATA_ROOT="${DATA_ROOT:-$ROOT/data}"
 
 DATE_TAG=$(date +%Y%m%d-%H%M%S)
@@ -92,6 +95,8 @@ solve_job() {
         --env "EVAL_ROUND=$ROUND" \
         --env "EVAL_SIZE=$EVAL_SIZE" \
         --env "EVAL_VARIANT=$EVAL_VARIANT" \
+        --env "EVAL_PROVIDER=$EVAL_PROVIDER" \
+        --env "EVAL_MODEL_CLASS=${EVAL_MODEL_CLASS:-}" \
         --bind "$WORK_DIR:/problem" \
         --bind "$MODELS_CONFIG:/models.json:ro" \
         --bind "$MINI_CONFIG:/mini.yaml:ro" \
