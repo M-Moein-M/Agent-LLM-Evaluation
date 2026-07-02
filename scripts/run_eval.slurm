@@ -30,8 +30,14 @@ module load apptainer 2>/dev/null || module load singularity 2>/dev/null || true
 cd "$SLURM_SUBMIT_DIR"   # run from the repo root you submitted from
 
 # --- runtime + eval configuration (override at submit time with --export) ---
+# pi is DROPPED from the first A40 run (no enforceable step cap — see TODO.md /
+# AGENT.md). Default to swe-mini; run one sbatch per agent (e.g. claude) by
+# overriding EVAL_AGENT at submit time: `sbatch --export=ALL,EVAL_AGENT=claude ...`.
 export CONTAINER_RUNTIME=apptainer
-export EVAL_AGENT="${EVAL_AGENT:-pi}"
+export EVAL_AGENT="${EVAL_AGENT:-swe-mini}"
+# Endpoint selector: providers.<name> in models.json. local = gateway (Qwen);
+# llama = the host Llama-3.3-70B endpoint. Override at submit with --export.
+export EVAL_PROVIDER="${EVAL_PROVIDER:-local}"
 export EVAL_MODELS="${EVAL_MODELS:-Qwen3.6-35B-A3B}"
 export EVAL_ROUNDS="${EVAL_ROUNDS:-10}"
 export EVAL_SOLVE_PAR="${EVAL_SOLVE_PAR:-32}"
