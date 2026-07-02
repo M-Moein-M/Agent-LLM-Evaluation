@@ -5,8 +5,8 @@ Walks the trace tree and, for every round (a dir holding ``.eval/facts.json``),
 parses the agent's raw event/trajectory file that sits NEXT TO ``.eval/`` and
 writes ``.eval/stats.json``.
 
-Two agent formats are supported, both of which record per-model-call token usage
-(so the same metrics come out the other side):
+Three agent formats are supported, all of which record per-model-call token
+usage (so the same metrics come out the other side):
 
   * **pi**  → ``agent.jsonl`` (one JSON event per line). Assistant turns are
     ``message_end`` events whose ``message.role == "assistant"``; the per-call
@@ -15,6 +15,12 @@ Two agent formats are supported, both of which record per-model-call token usage
   * **swe-mini** → ``agent.traj.json`` (one JSON object). Per-call usage lives at
     ``messages[].extra.response.usage`` (``prompt_tokens`` / ``completion_tokens``
     / ``total_tokens``); tool actions are ``messages[]`` with ``role == "tool"``.
+  * **claude** → ``agent.stream.jsonl`` (Claude Code ``--output-format
+    stream-json``, one JSON event per line). Assistant turns are ``type ==
+    "assistant"`` events; per-call usage lives at ``message.usage``
+    (``input_tokens`` + ``cache_read_input_tokens`` + ``cache_creation_input_tokens``
+    is the effective prompt context, ``output_tokens`` the completion). Tool
+    actions are ``tool_use`` content blocks inside those assistant messages.
 
 Definitions, kept identical across agents so models are comparable:
 
@@ -140,6 +146,59 @@ def parse_swe_mini(path: Path) -> dict:
                    total_tokens, turns, steps, context_series)
 
 
+def parse_claude(path: Path) -> dict:
+    """Parse a Claude Code ``agent.stream.jsonl`` (--output-format stream-json).
+
+    Claude Code emits ONE ``assistant`` event per content block, all sharing the
+    same ``message.id`` and repeating that message's ``usage``. So we count a
+    *turn* (and its tokens) once per unique message id, while *steps* (tool
+    executions) are counted per ``tool_use`` block across all events.
+    """
+    total_input = total_output = total_tokens = turns = steps = 0
+    context_series: list[int] = []
+    seen_msgs: set[str] = set()
+    with open(path, "r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                ev = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if ev.get("type") != "assistant":
+                continue
+            msg = ev.get("message") or {}
+            # Count tool_use content blocks as tool executions (steps). These are
+            # per-block events, so count them every time (no dedup).
+            for block in msg.get("content") or []:
+                if isinstance(block, dict) and block.get("type") == "tool_use":
+                    steps += 1
+            # Token usage + turn count are per-MESSAGE (the same usage is
+            # repeated on every block event of one response) — dedup by id.
+            mid = msg.get("id")
+            if mid is not None and mid in seen_msgs:
+                continue
+            if mid is not None:
+                seen_msgs.add(mid)
+            turns += 1
+            usage = msg.get("usage") or {}
+            # Effective prompt context = fresh input + both cache tiers; Claude
+            # re-sends (cached) history each call, so this is the real per-call
+            # context size the compaction heuristic keys off.
+            inp = (int(usage.get("input_tokens") or 0)
+                   + int(usage.get("cache_read_input_tokens") or 0)
+                   + int(usage.get("cache_creation_input_tokens") or 0))
+            out = int(usage.get("output_tokens") or 0)
+            total_input += inp
+            total_output += out
+            total_tokens += inp + out
+            if inp:
+                context_series.append(inp)
+    return _finish("claude", path.name, total_input, total_output, total_tokens,
+                   turns, steps, context_series)
+
+
 def parse_round(round_dir: Path) -> Optional[dict]:
     """Locate and parse the agent trace file in ``round_dir`` (parent of .eval).
 
@@ -147,10 +206,13 @@ def parse_round(round_dir: Path) -> Optional[dict]:
     """
     pi_trace = round_dir / "agent.jsonl"
     swe_trace = round_dir / "agent.traj.json"
+    claude_trace = round_dir / "agent.stream.jsonl"
     if pi_trace.exists():
         return parse_pi(pi_trace)
     if swe_trace.exists():
         return parse_swe_mini(swe_trace)
+    if claude_trace.exists():
+        return parse_claude(claude_trace)
     return None
 
 
@@ -193,7 +255,7 @@ def main():
             continue
 
         if stats is None:
-            print(f"WARN: no agent.jsonl / agent.traj.json in {round_dir}", file=sys.stderr)
+            print(f"WARN: no agent.jsonl / agent.traj.json / agent.stream.jsonl in {round_dir}", file=sys.stderr)
             missing += 1
             continue
 
