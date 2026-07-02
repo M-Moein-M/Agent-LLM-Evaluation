@@ -119,7 +119,10 @@ fi
 BUILD_LOG="$EVAL_DIR/build.log"
 BUILD_START=$(date +%s)
 set +e
-bash -lc "$BUILD_CMD" > "$BUILD_LOG" 2>&1
+# Cap the build (20 min). A clean build of the heaviest problem (RabbitCT) is
+# ~1-2 min; this only fires on a wedged build. timeout exit 124 -> BUILD_STATUS
+# non-zero -> treated as a build failure (run is skipped) by the logic below.
+timeout 1200 bash -lc "$BUILD_CMD" > "$BUILD_LOG" 2>&1
 BUILD_STATUS=$?
 BUILD_END=$(date +%s)
 
@@ -143,7 +146,11 @@ if [ "$BUILD_STATUS" -eq 0 ]; then
 		SMI_PID=$!
 	fi
 
-	bash -lc "$RUN_CMD" > "$RUN_LOG" 2>&1
+	# Cap the graded run (10 min). Phase 2 is SERIAL and has no step-limit, so a
+	# non-terminating agent binary (e.g. an infinite-loop ./compact) would block
+	# this measure AND every measure after it — the one spot a hang has no escape.
+	# A real graded run is seconds; timeout exit 124 -> RUN_STATUS non-zero -> fail.
+	timeout 600 bash -lc "$RUN_CMD" > "$RUN_LOG" 2>&1
 	RUN_STATUS=$?
 	RUN_END=$(date +%s)
 

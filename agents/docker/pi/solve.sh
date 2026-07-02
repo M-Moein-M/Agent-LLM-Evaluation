@@ -39,6 +39,12 @@ pi --list-models
 # message on every token, which is quadratic and was ~99.7% of a 272MB trace.
 # The final content is preserved losslessly in message_end / tool_execution_end /
 # agent_end. `|| true` keeps the empty-output fail path working under pipefail.
+#
+# NOTE: no wall-clock cap on the solve. A self-hosted endpoint can be legitimately
+# slow (queued/loaded), so a coarse timeout here risks killing a run that is still
+# making progress. --step-limit bounds the NUMBER of turns; a truly hung tool call
+# is handled out-of-band (kill the leaf proc) per [[pi-solve-no-tool-timeout-hang]].
+# The graded replay in measure.sh IS capped, since Phase 2 is serial.
 pi -p --mode json --step-limit "$EVAL_STEP_LIMIT" --model "$EVAL_MODEL" "$PROMPT" 2>/dev/null \
 	| { grep --line-buffered -Ev '"type":"(message_update|tool_execution_update)"' || true; } \
 	| tee ~/agent.jsonl
