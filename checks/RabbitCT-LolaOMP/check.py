@@ -25,7 +25,13 @@ class Check(ProblemCheck):
     GPU_MIN_PEAK = 50.0   # peak utilization.gpu (%) — guards against CPU fallback
 
     def stages(self):
-        return [self.build, self.run, self.mse, self.gpu]
+        return [self.build, self.run, self.mse, self.gpu, self.metric]
+
+    def metric(self) -> StageResult:
+        # Ranking measurement (non-gating): reconstruction error against the
+        # reference volume, same as LolaBunny. Compared only WITHIN this table.
+        v = self.log_value(r"Mean Squared Error:\s*([0-9.eE+-]+)")
+        return self.metric_stage("mse", v, "HU^2", higher_better=False)
 
     def build(self) -> StageResult:
         return self.exit_stage("build", self.facts()["build"]["status"], fatal=True)
@@ -43,15 +49,7 @@ class Check(ProblemCheck):
         return StageResult("mse", passed, v, detail)
 
     def gpu(self) -> StageResult:
-        g = self.gpu_stats()
-        passed = (
-            g["samples"] > 0
-            and g["avg"] >= self.GPU_MIN_AVG
-            and g["peak"] >= self.GPU_MIN_PEAK
-        )
-        detail = (
-            f"avg {g['avg']:.1f}% (>= {self.GPU_MIN_AVG}), "
-            f"peak {g['peak']:.0f}% (>= {self.GPU_MIN_PEAK}), "
-            f"{g['samples']} samples"
-        )
-        return StageResult("gpu", passed, g, detail)
+        # Gate on peak only; avg is reported but not gated. See
+        # ProblemCheck.gpu_stage for the rationale (correct GPU kernels with a
+        # long non-GPU tail have low avg yet high peak).
+        return self.gpu_stage(self.GPU_MIN_PEAK, self.GPU_MIN_AVG)

@@ -155,6 +155,57 @@ class ProblemCheck:
             fatal=fatal,
         )
 
+    def gpu_stage(self, min_peak: float, min_avg: Optional[float] = None) -> StageResult:
+        """GPU-utilization stage, gated on **peak only**.
+
+        The stage exists to reject a CPU-only re-implementation sneaking past the
+        correctness bar; a real GPU kernel shows a high *peak* utilization. We do
+        NOT gate on *average* util: a correct kernel with a long non-GPU tail
+        (host I/O, setup, data load) has low avg yet high peak and must still
+        pass. ``min_avg`` is accepted for back-compat and reported for telemetry,
+        but never gates. The full ``{avg, peak, samples}`` dict is the value so
+        downstream aggregation can report the distribution.
+        """
+        g = self.gpu_stats()
+        passed = g["samples"] > 0 and g["peak"] >= min_peak
+        avg_note = f"avg {g['avg']:.1f}% (reported)"
+        detail = (
+            f"peak {g['peak']:.0f}% (>= {min_peak}), "
+            f"{avg_note}, {g['samples']} samples"
+        )
+        return StageResult("gpu", passed, g, detail)
+
+    def metric_stage(
+        self,
+        metric: str,
+        value: Optional[float],
+        unit: str,
+        higher_better: bool,
+    ) -> StageResult:
+        """Non-gating stage carrying the problem's ranking measurement.
+
+        Always ``passed`` — it records a number, it does not judge. Pass/fail
+        stays with the threshold stages (mse, gpu, perf) so adding a ranking
+        metric can never flip an existing verdict. The value is a self-describing
+        payload so the aggregator needs no per-problem knowledge: it can rank any
+        problem from ``{metric, value, unit, higher_better}`` alone.
+
+        ``value`` is None when the line is absent from run.log (crashed run,
+        agent removed the print); such rounds are simply not ranked.
+        """
+        payload = {
+            "metric": metric,
+            "value": value,
+            "unit": unit,
+            "higher_better": higher_better,
+        }
+        detail = (
+            f"{metric} = {value:g} {unit}"
+            if value is not None
+            else f"{metric}: not found in run.log"
+        )
+        return StageResult("metric", True, payload, detail)
+
     # -- runner --------------------------------------------------------------
 
     def stages(self) -> list[Callable[[], StageResult]]:

@@ -40,7 +40,16 @@ class Check(ProblemCheck):
     PERF_MIN_FRAC = 0.15
 
     def stages(self):
-        return [self.build, self.run, self.mse, self.gpu, self.perf]
+        return [self.build, self.run, self.mse, self.gpu, self.perf, self.metric]
+
+    def metric(self) -> StageResult:
+        # Ranking measurement (non-gating): the harness bench's agent-vs-cuBLAS
+        # kernel-time ratio — the same number the perf stage gates on, but kept
+        # as a rankable scalar. Preferred over run.log's self-reported GFLOP/s
+        # because the bench is harness-owned (bound read-only at /grade) and the
+        # ratio self-calibrates to the device.
+        v = self._cublas_frac()[0]
+        return self.metric_stage("cublas_frac", v, "x cuBLAS", higher_better=True)
 
     def build(self) -> StageResult:
         return self.exit_stage("build", self.facts()["build"]["status"], fatal=True)
@@ -58,18 +67,10 @@ class Check(ProblemCheck):
         return StageResult("mse", passed, v, detail)
 
     def gpu(self) -> StageResult:
-        g = self.gpu_stats()
-        passed = (
-            g["samples"] > 0
-            and g["avg"] >= self.GPU_MIN_AVG
-            and g["peak"] >= self.GPU_MIN_PEAK
-        )
-        detail = (
-            f"avg {g['avg']:.1f}% (>= {self.GPU_MIN_AVG}), "
-            f"peak {g['peak']:.0f}% (>= {self.GPU_MIN_PEAK}), "
-            f"{g['samples']} samples"
-        )
-        return StageResult("gpu", passed, g, detail)
+        # Gate on peak only; avg is reported but not gated. See
+        # ProblemCheck.gpu_stage for the rationale (correct GPU kernels with a
+        # long non-GPU tail have low avg yet high peak).
+        return self.gpu_stage(self.GPU_MIN_PEAK, self.GPU_MIN_AVG)
 
     # -- perf: agent throughput as a fraction of cuBLAS on a fixed workload --
 
@@ -102,6 +103,28 @@ class Check(ProblemCheck):
                     continue
         return total if seen else None
 
+    def _cublas_frac(self):
+        """Agent throughput as a fraction of cuBLAS: ``(frac, source)``.
+
+        Prefers nsys kernel time; falls back to the bench's cudaEvent ms_total
+        if the nsys CSVs are absent. ``frac`` is None when neither is available
+        (bench never built/ran). Shared by the ``perf`` gate and the ``metric``
+        ranking stage so both always report the same number.
+        """
+        agent_ns = self._kernel_total_ns("kern_agent.csv")
+        cublas_ns = self._kernel_total_ns("kern_cublas.csv")
+        source = "nsys"
+        if agent_ns is None or cublas_ns is None:
+            agent_ns = self.log_value(r"BENCH agent .*ms_total=\s*([0-9.eE+-]+)",
+                                      file="perf.log")
+            cublas_ns = self.log_value(r"BENCH cublas .*ms_total=\s*([0-9.eE+-]+)",
+                                       file="perf.log")
+            source = "cudaEvent"
+
+        if not agent_ns or not cublas_ns or agent_ns <= 0:
+            return None, source
+        return cublas_ns / agent_ns, source
+
     def perf(self) -> StageResult:
         # Correctness at the graded size: the bench compares the agent kernel to
         # cuBLAS on identical inputs. A missing line means the bench never ran
@@ -116,24 +139,12 @@ class Check(ProblemCheck):
                                f"bench MSE {bench_mse:g} > {self.BENCH_MSE_MAX:g} "
                                "(kernel incorrect at graded size)")
 
-        # Throughput ratio. Prefer nsys kernel time; fall back to the bench's
-        # cudaEvent ms_total if the nsys CSVs are absent.
-        agent_ns = self._kernel_total_ns("kern_agent.csv")
-        cublas_ns = self._kernel_total_ns("kern_cublas.csv")
-        source = "nsys"
-        if agent_ns is None or cublas_ns is None:
-            agent_ns = self.log_value(r"BENCH agent .*ms_total=\s*([0-9.eE+-]+)",
-                                      file="perf.log")
-            cublas_ns = self.log_value(r"BENCH cublas .*ms_total=\s*([0-9.eE+-]+)",
-                                       file="perf.log")
-            source = "cudaEvent"
-
-        if not agent_ns or not cublas_ns or agent_ns <= 0:
+        frac, source = self._cublas_frac()
+        if frac is None:
             return StageResult("perf", False, None,
                                "perf timing unavailable (no nsys CSVs and no "
                                "BENCH ms_total in perf.log)")
 
-        frac = cublas_ns / agent_ns  # agent throughput / cuBLAS throughput
         passed = frac >= self.PERF_MIN_FRAC
         detail = (f"{frac * 100:.1f}% of cuBLAS ({source}; "
                   f">= {self.PERF_MIN_FRAC * 100:.0f}%), bench MSE {bench_mse:g}")
