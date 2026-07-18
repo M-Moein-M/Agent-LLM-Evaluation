@@ -14,6 +14,11 @@ EVAL_SIZE="${EVAL_SIZE:-256}"
 EVAL_VARIANT="${EVAL_VARIANT:-LolaBunnyGPU}"
 MODELS_CONFIG="${MODELS_CONFIG:-$ROOT/agents/apptainer/pi/models.json}"
 
+if [ -z "$EVAL_MODELS" ] && [ "$EVAL_AGENT" = "claude-pro" ]; then
+  # claude-pro's models are real Anthropic ids, not gateway ids from models.json.
+  EVAL_MODELS="claude-opus-4-8"
+fi
+
 if [ -z "$EVAL_MODELS" ]; then
   if command -v jq >/dev/null 2>&1; then
     EVAL_MODELS=$(jq -r ".providers.${EVAL_PROVIDER}.models[].id" "$MODELS_CONFIG" | paste -sd, -)
@@ -44,7 +49,30 @@ export DATA_ROOT
 # into a batch. Doubles as the per-wave gate confirming the currently-served
 # model is live before a 2h job starts. Skip with EVAL_SKIP_PREFLIGHT=1.
 # ---------------------------------------------------------------------------
-if [ "${EVAL_SKIP_PREFLIGHT:-0}" != "1" ]; then
+if [ "${EVAL_SKIP_PREFLIGHT:-0}" != "1" ] && [ "$EVAL_AGENT" = "claude-pro" ]; then
+  # claude-pro does NOT use the gateway: it runs Claude Code on a personal
+  # subscription against api.anthropic.com, so the gateway probe below would
+  # (correctly) fail every real Anthropic model id. Probe what this agent
+  # actually depends on instead: the token file exists, and the compute node can
+  # reach api.anthropic.com. Auth itself is validated by the run (the OAuth token
+  # needs Claude Code's own headers; hand-rolling that curl would be fragile).
+  TOKEN_FILE="${OAUTH_TOKEN_FILE:-$ROOT/agents/apptainer/claude-pro/.secrets/oauth_token}"
+  echo "Stage 0: claude-pro preflight (subscription auth, api.anthropic.com)"
+  if [ ! -s "$TOKEN_FILE" ]; then
+    echo "ERROR: subscription token missing/empty: $TOKEN_FILE" >&2
+    echo "       See agents/apptainer/claude-pro/README.md (claude setup-token)." >&2
+    exit 1
+  fi
+  echo "  [ok]   token file present: $TOKEN_FILE"
+  http=$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 10 --max-time 30 \
+    https://api.anthropic.com/v1/messages 2>/dev/null || echo 000)
+  if [ "$http" = "000" ]; then
+    echo "ERROR: cannot reach https://api.anthropic.com from this node (no route/proxy)." >&2
+    echo "       claude-pro needs outbound HTTPS to Anthropic; the gateway agents do not." >&2
+    exit 1
+  fi
+  echo "  [ok]   api.anthropic.com reachable (HTTP $http)"
+elif [ "${EVAL_SKIP_PREFLIGHT:-0}" != "1" ]; then
   if ! command -v curl >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
     echo "WARN: curl/jq unavailable — skipping reachability preflight (Stage 0)." >&2
   else

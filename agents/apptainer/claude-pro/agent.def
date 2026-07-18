@@ -1,0 +1,63 @@
+Bootstrap: docker
+From: nvidia/cuda:12.4.1-devel-ubuntu22.04
+
+# Apptainer image for the claude-pro agent: Claude Code driven by a personal
+# Claude subscription (OAuth token) against api.anthropic.com, instead of the
+# gateway. Byte-for-byte the same recipe as agents/apptainer/claude/agent.def
+# — subscription auth is RUNTIME state (a token), not image content. It exists as
+# its own def/image only so the gateway agent in agents/apptainer/claude/ stays
+# untouched and the two can be rebuilt independently.
+#
+# CUDA devel base + toolchain, mirroring the swe-mini / pi defs so the cluster
+# runs the exact same build/run/perf toolchain in the measure phase.
+#
+# The agent itself is Claude Code, installed via Anthropic's native installer
+# (standalone binary → /root/.local/bin/claude, no Node needed).
+#
+# Build (on a node with fakeroot — you have it):
+#   APPTAINER_CACHEDIR=$PWD/agents/apptainer/claude-pro/.cache \
+#   apptainer build --fakeroot agents/apptainer/claude-pro/agent.sif agents/apptainer/claude-pro/agent.def
+
+%post
+    apt-get update -y && apt-get install -y --no-install-recommends \
+        git \
+        curl \
+        wget \
+        tree \
+        ca-certificates \
+        build-essential \
+        libssl-dev \
+        libffi-dev \
+        libnuma-dev \
+        rsync \
+        jq \
+        && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+    # Claude Code — native standalone binary installer. Installs to
+    # /root/.local/bin/claude -> /root/.local/share/claude/versions/<v> (HOME is
+    # /root during %post). Put it on PATH via %environment below.
+    # NB: because the binary lives under /root/.local, host.sh must NOT bind its
+    # staging home OVER /root (that shadows claude → "command not found"); it
+    # mounts the staging home at its own path instead. See host.sh.
+    export HOME=/root
+    curl -fsSL https://claude.ai/install.sh | bash
+
+    # Nsight Systems CLI (nsys) for trustworthy external kernel timing in the
+    # perf-grading path. The CUDA base repo does NOT carry the standalone CLI, so
+    # add NVIDIA's devtools repo (which does). ISOLATED + non-fatal on purpose: a
+    # hiccup here must not poison the agent install above, and the image still
+    # builds if the download is unavailable (check falls back to cudaEvent timing).
+    ( apt-get update -y \
+      && apt-get install -y --no-install-recommends gnupg wget ca-certificates \
+      && ARCH="$(dpkg --print-architecture)" \
+      && wget -qO- "https://developer.download.nvidia.com/devtools/repos/ubuntu2204/${ARCH}/nvidia.pub" \
+         | gpg --dearmor -o /usr/share/keyrings/nvidia-devtools.gpg \
+      && echo "deb [signed-by=/usr/share/keyrings/nvidia-devtools.gpg] https://developer.download.nvidia.com/devtools/repos/ubuntu2204/${ARCH}/ /" \
+         > /etc/apt/sources.list.d/nvidia-devtools.list \
+      && apt-get update -y \
+      && apt-get install -y --no-install-recommends nsight-systems-cli ) \
+        || echo "WARNING: nsight-systems-cli not installed — perf grading will fall back to cudaEvent timing"
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+%environment
+    export PATH=/usr/local/bin:/root/.local/bin:$PATH

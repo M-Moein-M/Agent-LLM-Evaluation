@@ -39,3 +39,13 @@ data/
 # legacy archives stay ignored.
 agents/apptainer/pi/pi-edited.tar.gz
 agents/apptainer/pi/pi.tar.gz
+
+# claude-pro agent: subscription token + local build/run scratch (never commit)
+agents/apptainer/claude-pro/.secrets/
+agents/apptainer/claude-pro/.setup-home/
+agents/apptainer/claude-pro/.cache/
+agents/apptainer/claude-pro/.work/
+
+# run artifacts: SLURM/orchestrator logs and the trace archive (never commit)
+logs/
+traces.tar

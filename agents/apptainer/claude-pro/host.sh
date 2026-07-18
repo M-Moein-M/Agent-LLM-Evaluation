@@ -1,0 +1,202 @@
+#! /bin/bash -l
+
+# claude-pro agent orchestrator — APPTAINER runtime (cluster / SLURM).
+# Fork of agents/apptainer/claude/host.sh. Same two-phase structure (parallel
+# solve on a shared GPU, then serial GPU-isolated measure), same agent-agnostic
+# measure.sh. The gateway agent is left completely untouched.
+#
+# DELTAS vs agents/apptainer/claude/host.sh:
+#   * Auth: a personal Claude SUBSCRIPTION OAuth token instead of the gateway
+#     API key. models.json is therefore NOT bound — the token file is, read-only,
+#     at /oauth_token. Mint it with `claude setup-token`; see README.md in this dir.
+#   * EVAL_MODELS holds REAL Anthropic model ids (claude-opus-4-8, claude-sonnet-5)
+#     and has no models.json to be derived from, so it defaults to a single model.
+#   * EVAL_SOLVE_PAR defaults to 1: a subscription has per-account rate limits, and
+#     a 429 mid-solve just becomes a failed round in the results.
+#
+# Nothing is written outside this repo. Both the token and the per-job staging
+# homes live under agents/apptainer/claude-pro/ (gitignored).
+#
+# As in the gateway agent: Claude Code's native installer puts the binary under
+# /root/.local, so the staging home is mounted at its OWN path (HOME=$CLAUDEHOME)
+# rather than over /root — binding over /root would shadow the binary
+# ("claude: command not found").
+
+AGENT="claude-pro"
+ROOT="$(pwd)"
+AGENT_DIR="$ROOT/agents/apptainer/claude-pro"
+PROBLEM_DIR="$ROOT/problems"
+TRACE_ROOT="$ROOT/traces"
+AGENT_SIF="${AGENT_SIF:-$AGENT_DIR/agent.sif}"
+SOLVE_SCRIPT="$AGENT_DIR/solve.sh"
+MEASURE_SCRIPT="$ROOT/agents/docker/swe-mini/measure.sh"   # agent-agnostic, shared
+# Subscription OAuth token (see README.md). Kept in-repo and gitignored — never
+# in $HOME, never committed.
+OAUTH_TOKEN_FILE="${OAUTH_TOKEN_FILE:-$AGENT_DIR/.secrets/oauth_token}"
+EVAL_ROUNDS="${EVAL_ROUNDS:-20}"
+EVAL_PROBLEMS="${EVAL_PROBLEMS:-RabbitCT-LolaBunny}"
+EVAL_SIZE="${EVAL_SIZE:-256}"
+EVAL_VARIANT="${EVAL_VARIANT:-LolaBunnyGPU}"
+EVAL_SOLVE_PAR="${EVAL_SOLVE_PAR:-1}"
+EVAL_MAX_TURNS="${EVAL_MAX_TURNS:-120}"
+EVAL_MODELS="${EVAL_MODELS:-claude-opus-4-8}"
+# Empty = let Claude Code use its own defaults (unlike the gateway agent, whose
+# 262144 shared window forces an explicit output cap). Forwarded via --env below:
+# apptainer exec does NOT inherit the host environment.
+EVAL_MAX_OUTPUT_TOKENS="${EVAL_MAX_OUTPUT_TOKENS:-}"
+EVAL_MAX_THINKING_TOKENS="${EVAL_MAX_THINKING_TOKENS:-}"
+DATA_ROOT="${DATA_ROOT:-$ROOT/data}"
+
+DATE_TAG=$(date +%Y%m%d-%H%M%S)
+echo "ROOT directory was set to $ROOT"
+[[ -d "$PROBLEM_DIR" ]] || { echo "ERROR: Run from repo root. Missing $PROBLEM_DIR" >&2; exit 1; }
+
+if [[ ! -f "$AGENT_SIF" ]]; then
+    echo "ERROR: agent image not found: $AGENT_SIF" >&2
+    echo "Build it first (you have fakeroot):" >&2
+    echo "  APPTAINER_CACHEDIR=$AGENT_DIR/.cache apptainer build --fakeroot \\" >&2
+    echo "    $AGENT_SIF $AGENT_DIR/agent.def" >&2
+    exit 1
+fi
+
+if [[ ! -s "$OAUTH_TOKEN_FILE" ]]; then
+    echo "ERROR: subscription token not found: $OAUTH_TOKEN_FILE" >&2
+    echo "Mint one (interactive, once) and store it in-repo:" >&2
+    echo "  mkdir -p $AGENT_DIR/.setup-home $AGENT_DIR/.secrets" >&2
+    echo "  apptainer exec --home $AGENT_DIR/.setup-home $AGENT_SIF claude setup-token" >&2
+    echo "  ( umask 077; printf '%s\\n' 'sk-ant-oat01-...' > $OAUTH_TOKEN_FILE )" >&2
+    exit 1
+fi
+
+# Per-job staging homes + work dirs stay inside the repo (gitignored), so nothing
+# touches the real $HOME. Removed on exit.
+mkdir -p "$AGENT_DIR/.work"
+WORK_ROOT=$(mktemp -d -p "$AGENT_DIR/.work")
+trap 'rm -rf "$WORK_ROOT"' EXIT
+
+IFS=',' read -r -a MODELS <<< "$EVAL_MODELS"
+IFS=',' read -r -a PROBLEMS <<< "$EVAL_PROBLEMS"
+
+job_workdir()  { echo "$WORK_ROOT/work/$1/round-$2/$3"; }
+job_home()     { echo "$WORK_ROOT/home/$1/round-$2/$3"; }
+job_tracedir() { echo "$TRACE_ROOT/$3/$AGENT/$1/$DATE_TAG/round-$2"; }
+
+JOBS=()
+for MODEL in "${MODELS[@]}"; do
+    for ROUND in $(seq 1 "$EVAL_ROUNDS"); do
+        for PROBLEM_NAME in "${PROBLEMS[@]}"; do
+            if [[ ! -d "$PROBLEM_DIR/$PROBLEM_NAME" ]]; then
+                echo "Skipping missing problem: $PROBLEM_DIR/$PROBLEM_NAME" >&2
+                continue
+            fi
+            JOBS+=("$MODEL|$ROUND|$PROBLEM_NAME")
+        done
+    done
+done
+
+solve_job() {
+    local MODEL="$1" ROUND="$2" PROBLEM_NAME="$3"
+    local MODEL_TAG="${MODEL//\//_}"
+    local PROBLEM="$PROBLEM_DIR/$PROBLEM_NAME"
+    local WORK_DIR; WORK_DIR="$(job_workdir "$MODEL_TAG" "$ROUND" "$PROBLEM_NAME")"
+    local CLAUDEHOME; CLAUDEHOME="$(job_home "$MODEL_TAG" "$ROUND" "$PROBLEM_NAME")"
+
+    echo "[solve] problem: $PROBLEM_NAME | agent: $AGENT | model: $MODEL | round: $ROUND"
+    mkdir -p "$WORK_DIR" "$CLAUDEHOME"
+    cp -a "$PROBLEM"/. "$WORK_DIR"/
+
+    local DATA_BIND=()
+    if [[ -d "$DATA_ROOT/$PROBLEM_NAME/RabbitInput" ]]; then
+        DATA_BIND=(--bind "$DATA_ROOT/$PROBLEM_NAME/RabbitInput:/problem/RabbitInput:ro")
+    fi
+
+    apptainer exec --nv \
+        --home "$CLAUDEHOME" \
+        --env "EVAL_AGENT=$AGENT" \
+        --env "EVAL_MODEL=$MODEL" \
+        --env "EVAL_ROUND=$ROUND" \
+        --env "EVAL_SIZE=$EVAL_SIZE" \
+        --env "EVAL_VARIANT=$EVAL_VARIANT" \
+        --env "EVAL_MAX_TURNS=$EVAL_MAX_TURNS" \
+        --env "EVAL_MAX_OUTPUT_TOKENS=$EVAL_MAX_OUTPUT_TOKENS" \
+        --env "EVAL_MAX_THINKING_TOKENS=$EVAL_MAX_THINKING_TOKENS" \
+        --bind "$WORK_DIR:/problem" \
+        --bind "$OAUTH_TOKEN_FILE:/oauth_token:ro" \
+        --bind "$SOLVE_SCRIPT:/solve.sh:ro" \
+        "${DATA_BIND[@]}" \
+        "$AGENT_SIF" /bin/bash -l /solve.sh /problem
+}
+
+measure_job() {
+    local MODEL="$1" ROUND="$2" PROBLEM_NAME="$3"
+    local MODEL_TAG="${MODEL//\//_}"
+    local PROBLEM="$PROBLEM_DIR/$PROBLEM_NAME"
+    local WORK_DIR;  WORK_DIR="$(job_workdir "$MODEL_TAG" "$ROUND" "$PROBLEM_NAME")"
+    local CLAUDEHOME; CLAUDEHOME="$(job_home "$MODEL_TAG" "$ROUND" "$PROBLEM_NAME")"
+    local TRACE_DIR; TRACE_DIR="$(job_tracedir "$MODEL_TAG" "$ROUND" "$PROBLEM_NAME")"
+
+    echo "[measure] problem: $PROBLEM_NAME | agent: $AGENT | model: $MODEL | round: $ROUND"
+
+    local DATA_BIND=()
+    if [[ -d "$DATA_ROOT/$PROBLEM_NAME/RabbitInput" ]]; then
+        DATA_BIND=(--bind "$DATA_ROOT/$PROBLEM_NAME/RabbitInput:/problem/RabbitInput:ro")
+    fi
+
+    # Harness-owned perf bench (per problem). Bound read-only so the agent can
+    # never edit what grades it; measure.sh runs the nsys/cuBLAS perf grading
+    # only when this file is present.
+    local GRADE_BIND=()
+    if [[ -f "$ROOT/checks/$PROBLEM_NAME/bench.cu" ]]; then
+        GRADE_BIND=(--bind "$ROOT/checks/$PROBLEM_NAME/bench.cu:/grade/bench.cu:ro")
+    fi
+
+    apptainer exec --nv \
+        --env "EVAL_AGENT=$AGENT" \
+        --env "EVAL_MODEL=$MODEL" \
+        --env "EVAL_ROUND=$ROUND" \
+        --env "EVAL_SIZE=$EVAL_SIZE" \
+        --env "EVAL_VARIANT=$EVAL_VARIANT" \
+        --bind "$WORK_DIR:/problem" \
+        --bind "$MEASURE_SCRIPT:/measure.sh:ro" \
+        "${DATA_BIND[@]}" \
+        "${GRADE_BIND[@]}" \
+        "$AGENT_SIF" /bin/bash -l /measure.sh /problem
+
+    mkdir -p "$TRACE_DIR"
+    rsync -a --prune-empty-dirs --compare-dest="$PROBLEM/" "$WORK_DIR/" "$TRACE_DIR/"
+    diff -ru --exclude=".git" "$PROBLEM/" "$WORK_DIR/" > "$TRACE_DIR/changed_diff.txt" 2>/dev/null || true
+
+    if [ ! -s "$TRACE_DIR/.eval/facts.json" ]; then
+        echo "ERROR: no .eval/facts.json in trace for ${PROBLEM_NAME} | ${MODEL} | round-${ROUND} — extraction produced no evidence. Aborting eval." >&2
+        exit 1
+    fi
+    cat "$TRACE_DIR/changed_diff.txt" 2>/dev/null || true
+
+    rm -rf "$WORK_DIR" "$CLAUDEHOME"
+}
+
+echo "=== Phase 1: solving ${#JOBS[@]} job(s), up to $EVAL_SOLVE_PAR in parallel (shared GPU) ==="
+running=0
+for job in "${JOBS[@]}"; do
+    IFS='|' read -r MODEL ROUND PROBLEM_NAME <<< "$job"
+    solve_job "$MODEL" "$ROUND" "$PROBLEM_NAME" &
+    running=$((running + 1))
+    if (( running >= EVAL_SOLVE_PAR )); then
+        wait -n
+        running=$((running - 1))
+    fi
+done
+wait
+
+echo "=== Phase 2: measuring ${#JOBS[@]} job(s), serial (GPU-isolated) ==="
+for job in "${JOBS[@]}"; do
+    IFS='|' read -r MODEL ROUND PROBLEM_NAME <<< "$job"
+    measure_job "$MODEL" "$ROUND" "$PROBLEM_NAME"
+done
+
+if command -v python3 >/dev/null 2>&1; then
+    python3 "$ROOT/checks/check_pass.py" --traces "$TRACE_ROOT"
+    python3 "$ROOT/checks/trace_stats.py" --traces "$TRACE_ROOT"
+else
+    echo "WARN: python3 not found on host — skipping pass checks. Run checks/check_pass.py + trace_stats.py manually." >&2
+fi
