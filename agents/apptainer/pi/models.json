@@ -10,7 +10,8 @@
       },
       "models": [
         { "id": "Qwen3.6-35B-A3B", "contextWindow": 256000, "maxTokens": 262144 },
-        { "id": "deepseek-ai/DeepSeek-V4-Flash", "contextWindow": 256000, "maxTokens": 1048576 }
+        { "id": "deepseek-ai/DeepSeek-V4-Flash", "contextWindow": 256000, "maxTokens": 1048576 },
+        { "id": "moonshotai/Kimi-K2.7-Code", "contextWindow": 240000, "maxTokens": 200000 }
       ]
     }
   }
