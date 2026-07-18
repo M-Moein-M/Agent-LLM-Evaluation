@@ -107,6 +107,20 @@ agents/
                                loop_control.max_steps_per_turn. Reuses
                                docker/swe-mini/measure.sh for Phase 2.
                              NOTE: models.json default still lives in apptainer/pi/.
+      claude-pro/            Claude Code on a PERSONAL Anthropic subscription
+                             (OAuth to api.anthropic.com — NOT the gateway,
+                             never an open-weight model). The study's only
+                             frontier-model row (claude-opus-4-8).
+        agent.def              Same base as claude/, but auth is the subscription
+                               token, not a gateway key.
+        host.sh / solve.sh     Phase 1 mirrors claude/; Phase 2 reuses
+                               docker/swe-mini/measure.sh. Scratch/secret dirs
+                               (.secrets/, .setup-home/, .cache/, .work/) are
+                               gitignored.
+        README.md              Token setup (claude setup-token) + run notes.
+                             Driven by scripts/_run_one_claude_pro.slurm and
+                             scripts/_orchestrate_claude_pro.sh (one problem at a
+                             time, 5 rounds/problem, spaced for the session limit).
 
 problems/<P>/                One directory per problem.
   PROMPT.md                  Task description + the solution.json contract the
@@ -117,15 +131,29 @@ checks/                      Agent-AGNOSTIC judging subsystem (outside agent wor
                              so it can't be gamed). Host-side, python3 only.
   eval_lib.py                ProblemCheck base + evidence accessors:
                              facts(), log_value(pattern), gpu_stats().
+                             Shared stage helpers: gpu_stage() (gates on PEAK
+                             util only — see below) and metric_stage() (non-gating
+                             ranking measurement).
   <P>/check.py               Per-problem pass criteria: ordered stages + threshold
-                             constants at top of file.
+                             constants at top of file. Each ends with a non-gating
+                             metric() stage that records the problem's rankable
+                             scalar (mse, or tiled-gemm's cublas_frac).
+  report_tables.py           Emits the per-problem ranking tables (markdown): one
+                             table per problem, agent × model, pass@1 beside the
+                             continuous metric (mean ± sd over every measured
+                             round). EXCLUDE_CAMPAIGNS drops harness artifacts.
   <P>/bench.cu               OPTIONAL harness-owned perf bench (tiled-gemm only so
                              far). Bound read-only into measure.sh as /grade/bench.cu;
                              never enters the agent workspace. See "Performance
                              grading" below.
   check_pass.py              Driver: runs each problem's check over a trace →
                              .eval/pass_result.json.
-  collect_results.py         Aggregates verdicts → pass@1 per (agent, model).
+  collect_results.py         Aggregates verdicts → pass@1 per (agent, model), plus
+                             per_problem_rankings() (the ranking rows report_tables
+                             renders). normalize_model() strips serving prefixes so
+                             one model is one row; rounds are attributed to a device
+                             at the CAMPAIGN level so failing rounds (no gpu_info)
+                             still count on the A40.
 
 data/<P>/                    Bulk per-problem input (GITIGNORED). Bind-mounted
                              read-only into the container, never copied per round.
@@ -154,7 +182,12 @@ backprojection, the default), **RabbitCT-LolaOMP** (OpenMP variant),
    early with a clear error if any is unreachable — so a mis-served model fails
    in seconds, not hours into a batch. It also doubles as the per-wave gate that
    the currently-served model is live (the gateway serves one model at a time).
-   Skip with `EVAL_SKIP_PREFLIGHT=1`.
+   Skip with `EVAL_SKIP_PREFLIGHT=1`. **claude-pro** takes a different branch: it
+   does not use the gateway, so it probes the subscription token file exists and
+   that the node can reach `api.anthropic.com` instead of doing a gateway
+   completion (a real Anthropic id would always fail that). `run_eval.sh` also
+   defaults `EVAL_MODELS=claude-opus-4-8` for this agent (a real Anthropic id,
+   not a `models.json` gateway id).
 
 1. **Stage 1 (data prep).** Ensures each RabbitCT variant's bulk input is
    present. One canonical copy lives in `data/RabbitCT/`; each requested variant
@@ -302,6 +335,26 @@ claude. A clean green PASS is easiest to demonstrate against a **non-thinking mo
 > stream-json (the schemas differ — kimi emits `{role,content,tool_calls}` objects),
 > so its token/step counts read 0 for kimi until a `parse_kimi` branch is added. It's
 > best-effort + per-round try/except, so this is non-fatal.
+
+### claude-pro: subscription frontier model, off the gateway
+
+`claude-pro` is Claude Code run against a **personal Anthropic subscription**
+(OAuth to `api.anthropic.com`), not the gateway and not a self-hosted box.
+It is the study's only frontier-model row (`claude-opus-4-8`) and exists to
+anchor the open-weight results against a known-strong reference.
+
+- **Auth is a token file, not a gateway key.** `agents/apptainer/claude-pro/.secrets/oauth_token`
+  (from `claude setup-token`; path overridable via `OAUTH_TOKEN_FILE`). It plus all
+  local scratch (`.setup-home/`, `.cache/`, `.work/`) are gitignored — never commit them.
+- **Stage 0 differs** (see above): token-present + `api.anthropic.com`-reachable,
+  not a gateway completion. `EVAL_MODELS` defaults to `claude-opus-4-8`.
+- **Rate-limited by subscription session, not TPM.** Runs are **5 rounds/problem**
+  (scored /5 and /20, not /10 and /40), one problem at a time with spacing between
+  them — driven by `scripts/_orchestrate_claude_pro.sh` submitting
+  `scripts/_run_one_claude_pro.slurm` per problem. A round that trips the session
+  limit produces no `solution.json` (build-fail); those campaigns are re-run clean
+  and excluded via `EXCLUDE_CAMPAIGNS` in `report_tables.py`.
+- Phase 1 mirrors `claude/`; Phase 2 reuses `docker/swe-mini/measure.sh`.
 
 ### The solution.json contract
 
@@ -519,12 +572,26 @@ python3 checks/collect_results.py                                  # → results
 - **Tune a threshold:** edit the constants at the top of
   `checks/<P>/check.py` (e.g. `MSE_MAX`, `GPU_MIN_AVG`, `GPU_MIN_PEAK`), then
   re-run `check_pass.py`. No GPU.
+- **GPU stage gates on PEAK only.** All problems now call the shared
+  `gpu_stage(GPU_MIN_PEAK, GPU_MIN_AVG)`: it passes on `peak >= GPU_MIN_PEAK`
+  and *reports* avg without gating on it. A correct GPU kernel with a long
+  non-GPU tail (host I/O, setup) has low avg yet high peak and must still pass;
+  peak is what rejects a CPU-only re-implementation. `GPU_MIN_AVG` is kept for
+  telemetry/back-compat.
+- **Every check ends with a non-gating `metric()` stage.** It calls
+  `metric_stage(name, value, unit, higher_better)` to record the problem's
+  rankable scalar (always `passed=True` — it records a number, it does not
+  judge, so it can never flip a verdict). The payload is self-describing, so
+  `collect_results.per_problem_rankings` / `report_tables.py` rank any problem
+  without per-problem knowledge. tiled-gemm's `metric` and `perf` share one
+  `_cublas_frac()` so they always report the same ratio.
 - **Add a check:** create `checks/<P>/check.py` with a `Check(ProblemCheck)`
   subclass (model it on `checks/RabbitCT-LolaBunny/check.py`). Implement
   `stages()` returning ordered stage methods; mark `build`/`run` `fatal=True` so
   downstream stages are reported `skipped` (not `failed`) when a fatal stage
-  breaks — this preserves *which stage broke*. Use the inherited `facts()`,
-  `log_value(pattern)`, and `gpu_stats()` helpers — **never parse raw evidence
+  breaks — this preserves *which stage broke*. End with a `metric()` stage.
+  Use the inherited `facts()`, `log_value(pattern)`, `gpu_stats()`,
+  `gpu_stage()`, and `metric_stage()` helpers — **never parse raw evidence
   files yourself.**
 
 ### Adding a new problem
