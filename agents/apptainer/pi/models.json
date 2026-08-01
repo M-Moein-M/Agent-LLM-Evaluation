@@ -1,17 +1,17 @@
 {
   "providers": {
     "local": {
-      "baseUrl": "http://10.0.0.1:30000/v1",
+      "baseUrl": "https://gateway.example.org/v1",
       "api": "openai-completions",
-      "apiKey": "sk-REDACTED",
+      "apiKey": "PASTE_KEY_IN_models.local.json",
       "compat": {
         "supportsDeveloperRole": false,
         "supportsReasoningEffort": false
       },
       "models": [
         { "id": "Qwen3.6-35B-A3B", "contextWindow": 256000, "maxTokens": 262144 },
-        { "id": "deepseek-ai/DeepSeek-V4-Flash", "contextWindow": 256000, "maxTokens": 1048576 },
-        { "id": "moonshotai/Kimi-K2.7-Code", "contextWindow": 240000, "maxTokens": 200000 }
+        { "id": "deepseek-ai/DeepSeek-V4-Flash", "contextWindow": 256000, "maxTokens": 65536 },
+        { "id": "nvidia/Kimi-K2.7-Code-NVFP4", "contextWindow": 240000, "maxTokens": 200000 }
       ]
     }
   }
