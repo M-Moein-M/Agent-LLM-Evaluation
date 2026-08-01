@@ -14,6 +14,17 @@ PROBLEM_DIR=$1
 EVAL_MODEL="${EVAL_MODEL:-unknown-model}"
 EVAL_MAX_TURNS="${EVAL_MAX_TURNS:-120}"   # enforceable runaway cap (cf. swe-mini step_limit=120)
 
+# Reasoning effort, passed as `claude --effort <level>`. Set here so the CLI
+# invocation stays IDENTICAL to claude-pro's — the two agents must differ only in
+# auth/model, or the gateway-vs-subscription comparison stops being clean.
+#
+# Verified 2026-07-29: the pinned CLI 2.1.209 ACCEPTS --effort high/xhigh against
+# the gateway without error. That is not evidence it does anything — effort is a
+# Claude-model reasoning control and the gateway serves non-Anthropic models
+# (models.json already declares supportsReasoningEffort:false for this provider),
+# so treat it as a no-op here and do NOT attribute any DeepSeek score change to it.
+EVAL_EFFORT="${EVAL_EFFORT:-high}"
+
 cd "$PROBLEM_DIR"
 rm -rf .git/
 rm -rf .github/
@@ -118,8 +129,12 @@ rm PROMPT.md
 
 tree -a
 
+EFFORT_FLAG=()
+[ -n "$EVAL_EFFORT" ] && EFFORT_FLAG=(--effort "$EVAL_EFFORT")
+
 claude -p "$PROMPT" \
     --max-turns "$EVAL_MAX_TURNS" \
+    "${EFFORT_FLAG[@]}" \
     --permission-mode bypassPermissions \
     --allowedTools "Read,Edit,Write,Bash" \
     --output-format stream-json --verbose \

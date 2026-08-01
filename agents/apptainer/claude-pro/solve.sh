@@ -13,8 +13,19 @@
 set -euo pipefail
 
 PROBLEM_DIR=$1
-EVAL_MODEL="${EVAL_MODEL:-claude-opus-4-8}"
+EVAL_MODEL="${EVAL_MODEL:-claude-opus-5}"
 EVAL_MAX_TURNS="${EVAL_MAX_TURNS:-120}"   # enforceable runaway cap (cf. swe-mini step_limit=120)
+
+# Reasoning effort, passed as `claude --effort <level>` (low|medium|high|xhigh|
+# max; verified present in the pinned CLI 2.1.209). Session-scoped, overrides the
+# effortLevel setting without persisting. Set empty to fall back to the CLI default.
+#
+# CAUTION — higher effort means longer reasoning per turn, and with
+# DISABLE_AUTO_COMPACT=1 every retained thinking block counts against the window.
+# Opus already burns ~3x the context per turn that the gateway's DeepSeek does
+# (1883-4130 vs 925-1450 tok/turn on the 20260728 waves). Compare ctx/turn between
+# waves before reading any effort effect as a capability result.
+EVAL_EFFORT="${EVAL_EFFORT:-high}"
 
 cd "$PROBLEM_DIR"
 rm -rf .git/
@@ -74,6 +85,13 @@ export DISABLE_ERROR_REPORTING=1
 # context exhaustion (comparable to the others running out of steps).
 export DISABLE_AUTO_COMPACT=1
 
+# The context window is NOT set here — the model's native window applies (1M on a
+# current Opus subscription), so total tokens per round run as high as the model
+# allows. Nothing in this repo may set CLAUDE_CODE_AUTO_COMPACT_WINDOW: it is a
+# token count, not a compaction toggle, and any value clamps the window. The
+# 20260728 wave lost all 5 rounds that way when a host ~/.bashrc export leaked in;
+# --cleanenv in host.sh now blocks that (full story in AGENT.md).
+
 # Skip the first-run onboarding wizard (no TTY in the container). HOME here is
 # the per-job staging home host.sh created — nothing lands in the real home.
 mkdir -p ~/.claude
@@ -92,8 +110,12 @@ rm PROMPT.md
 
 tree -a
 
+EFFORT_FLAG=()
+[ -n "$EVAL_EFFORT" ] && EFFORT_FLAG=(--effort "$EVAL_EFFORT")
+
 claude -p "$PROMPT" \
     --max-turns "$EVAL_MAX_TURNS" \
+    "${EFFORT_FLAG[@]}" \
     --permission-mode bypassPermissions \
     --allowedTools "Read,Edit,Write,Bash" \
     --output-format stream-json --verbose \
