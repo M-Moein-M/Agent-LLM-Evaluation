@@ -65,6 +65,19 @@ scripts/run_eval.sh          Single entrypoint. Sets EVAL_* defaults, does Stage
                              data prep, then execs agents/docker/$EVAL_AGENT/host.sh.
 
 agents/
+  measure.sh                 In-container Phase 2, ONE canonical copy shared by
+                             every agent and both runtimes (each host.sh binds it
+                             as /measure.sh): replay solution.json's build/run →
+                             .eval/ evidence + facts.json. NO judgment.
+                             Records `node` in facts.json and .eval/host_info.txt
+                             (lscpu/numactl) — the ranking metric is wall time on
+                             a specific machine, so rounds are only comparable
+                             within a node. GPU sampling is best-effort, so this
+                             works unchanged on CPU-only test-cluster nodes.
+                             Plus an OPTIONAL perf-grading block: if
+                             /grade/bench.cu is bound (problem has one), compile
+                             it against the agent kernel + cuBLAS and time both
+                             (nsys, else cudaEvent) → .eval/perf.log + kern_*.csv.
   docker/                    CURRENT focus (easier GPU access).
     pi/                      pi agent (two-phase, parallel-capable):
       Dockerfile               CUDA base + Node + pi-coding-agent.
@@ -73,19 +86,11 @@ agents/
                                extract traces, run host-side checks.
       solve.sh                 In-container Phase 1: run agent → source +
                                solution.json + agent.jsonl. NO measurement.
-      measure.sh               In-container Phase 2: replay build/run with GPU
-                               sampling → .eval/ evidence + facts.json. NO judgment.
-                               Plus an OPTIONAL perf-grading block: if
-                               /grade/bench.cu is bound (problem has one), compile
-                               it against the agent kernel + cuBLAS and time both
-                               (nsys, else cudaEvent) → .eval/perf.log + kern_*.csv.
     swe-mini/                swe-mini agent (two-phase, mirrors pi):
       Dockerfile               CUDA base + Python + mini-swe-agent (litellm).
       host.sh                  Orchestrator (mirror of pi's).
       solve.sh                 In-container Phase 1: run mini agent → source +
                                solution.json + agent.traj.json. NO measurement.
-      measure.sh               In-container Phase 2: replay build/run with GPU
-                               sampling → .eval/ evidence + facts.json. NO judgment.
       mini.yaml                Prompt templates + finite step_limit.
   apptainer/                 CLUSTER runtime (SLURM / cluster A40), selected by
                              CONTAINER_RUNTIME=apptainer. Same two-phase contract
@@ -96,7 +101,7 @@ agents/
         solve.sh               Phase 1: run Claude Code headless against the NHR
                                gateway (Anthropic protocol) → source +
                                solution.json + agent.stream.jsonl. --max-turns cap.
-                               Reuses docker/swe-mini/measure.sh for Phase 2.
+                               Reuses agents/measure.sh for Phase 2.
       kimi/                  Kimi Code agent (apptainer-only — no docker twin yet):
         agent.def              CUDA devel base + Kimi Code native install
                                (KIMI_INSTALL_DIR=/usr/local → /usr/local/bin/kimi) + nsys.
@@ -105,16 +110,16 @@ agents/
                                gateway (OpenAI-compat — /v1 kept) → source +
                                solution.json + agent.stream.jsonl. Cap via config.toml
                                loop_control.max_steps_per_turn. Reuses
-                               docker/swe-mini/measure.sh for Phase 2.
+                               agents/measure.sh for Phase 2.
                              NOTE: models.json default still lives in apptainer/pi/.
       claude-pro/            Claude Code on a PERSONAL Anthropic subscription
                              (OAuth to api.anthropic.com — NOT the gateway,
                              never an open-weight model). The study's only
-                             frontier-model row (claude-opus-4-8).
+                             frontier-model row (claude-opus-5).
         agent.def              Same base as claude/, but auth is the subscription
                                token, not a gateway key.
         host.sh / solve.sh     Phase 1 mirrors claude/; Phase 2 reuses
-                               docker/swe-mini/measure.sh. Scratch/secret dirs
+                               agents/measure.sh. Scratch/secret dirs
                                (.secrets/, .setup-home/, .cache/, .work/) are
                                gitignored.
         README.md              Token setup (claude setup-token) + run notes.
@@ -142,6 +147,10 @@ checks/                      Agent-AGNOSTIC judging subsystem (outside agent wor
                              table per problem, agent × model, pass@1 beside the
                              continuous metric (mean ± sd over every measured
                              round). EXCLUDE_CAMPAIGNS drops harness artifacts.
+  report_html.py             Same aggregation as report_tables.py, rendered as a
+                             sortable, deterministic (no now()) standalone HTML
+                             report + a hand-authored results/notes.yaml Notes
+                             column. Pure stdlib + PyYAML.
   <P>/bench.cu               OPTIONAL harness-owned perf bench (tiled-gemm only so
                              far). Bound read-only into measure.sh as /grade/bench.cu;
                              never enters the agent workspace. See "Performance
@@ -153,7 +162,14 @@ checks/                      Agent-AGNOSTIC judging subsystem (outside agent wor
                              renders). normalize_model() strips serving prefixes so
                              one model is one row; rounds are attributed to a device
                              at the CAMPAIGN level so failing rounds (no gpu_info)
-                             still count on the A40.
+                             still count on the A40. A campaign where EVERY round
+                             failed before measure (no gpu_info.txt anywhere in it)
+                             falls back to _gpu_by_problem: a device seen elsewhere
+                             under the same problem, but ONLY if every sibling that
+                             ever resolved one agrees — otherwise `unknown`. This is
+                             what correctly leaves a genuinely CPU-only problem
+                             (e.g. 2D-seq) unlabeled instead of the date-based
+                             fallback mislabeling it A40.
 
 data/<P>/                    Bulk per-problem input (GITIGNORED). Bind-mounted
                              read-only into the container, never copied per round.
@@ -166,9 +182,54 @@ results/                     Aggregated output: runs.jsonl + summary.json.
 
 Graded (have a matching `checks/<P>/check.py`): **RabbitCT-LolaBunny** (CUDA GPU
 backprojection, the default), **RabbitCT-LolaOMP** (OpenMP variant),
-**tiled-gemm**, **stream-compact** (CUDA). Experimental / no checks yet:
-`2D-seq`, `MD-Bench`, `0`. The RabbitCT variants share one ~4.5 GB
-`RabbitInput/` dataset.
+**tiled-gemm**, **stream-compact** (CUDA), **2D-seq** (CPU — 2D Poisson/SOR,
+see below). Experimental / no checks yet: `MD-Bench`, `0`. The RabbitCT
+variants share one ~4.5 GB `RabbitInput/` dataset.
+
+`2D-seq` is the only **CPU-only** problem: no GPU, no dataset, no `--nv`
+needed. It is a fixed-sweep-count SOR kernel graded on `solve()` wall time,
+with a `DIGEST` line (printed by the frozen `src/verify.c`) gating correctness
+at 1e-9 relative against `checks/2D-seq/reference.json`. Its `PROMPT.md` is
+deliberately underspecified — it names no parallel programming model, no
+hardware detail and no target machine — because it exists to test whether a
+model can characterize an unfamiliar CPU on its own. Regenerate the reference
+with `bash checks/2D-seq/make_reference.sh` after any `poisson.par` change.
+
+Four files are frozen (`_FROZEN` in `checks/2D-seq/check.py`, enforced by the
+`integrity` stage): `poisson.par`, `src/verify.c`, `src/verify.h` — and
+`src/main.c`, which is frozen because it owns *both ends of the measurement*.
+It brackets `solve()` with the timer and prints the `SOLVE_TIME` line the
+metric stage ranks on. An editable driver lets a solution shrink the timed
+region or hoist sweeps into setup and still emit a correct `DIGEST`: a better
+score for no faster solver. Everything that legitimately needs changing
+(`src/solver.c`, `src/allocate.c`, the build) is in other files.
+
+The metric line is **tagged** (`SOLVE_TIME %.6fs`) rather than a bare
+`" %.2fs"`. `eval_lib.log_value` takes the FIRST `re.search` match, so an
+untagged number-plus-`s` pattern is hijacked by any timing the agent's own code
+prints earlier in `run.log`. Microsecond resolution keeps a solver that gets
+from ~100 s to well under a second still rankable.
+
+### Running CPU problems on the NHR test cluster
+
+CPU problems (e.g. 2D-seq) run on the test cluster instead of the A40 nodes.
+A wave script targeting one of these differs from the A40 wave scripts only in
+what the metric being wall time on one named machine forces:
+
+- `--nodelist=cpu-node --exclusive`, no `--gres` — rounds are only comparable
+  within a node, and nothing else may share it.
+- No `--cpus-per-task`. On the A40 waves 16 CPUs capped compiles harmlessly;
+  on a 288-CPU / 8-NUMA test-cluster node it would confine the agent to a
+  16-CPU cgroup and hide the hardware it is supposed to discover.
+- `EVAL_SOLVE_PAR=1` (see Phase 1/2 above).
+- `EVAL_GPU=0`. Apptainer `--nv` is now conditional in every `host.sh`:
+  `auto` (default) passes it only when `nvidia-smi` reports a GPU, `1`/`0`
+  force it. On GPU nodes behavior is unchanged.
+
+`measure.sh` records `node` in `facts.json` plus `.eval/host_info.txt`
+(`lscpu`, `numactl -H`), so which machine produced a number is in the trace
+rather than in whoever submitted the job. Note `PerfCounterAccess` is denied on
+every test-cluster node probed so far — wall-clock only, no likwid/`perf stat`.
 
 ---
 
@@ -186,7 +247,7 @@ backprojection, the default), **RabbitCT-LolaOMP** (OpenMP variant),
    does not use the gateway, so it probes the subscription token file exists and
    that the node can reach `api.anthropic.com` instead of doing a gateway
    completion (a real Anthropic id would always fail that). `run_eval.sh` also
-   defaults `EVAL_MODELS=claude-opus-4-8` for this agent (a real Anthropic id,
+   defaults `EVAL_MODELS=claude-opus-5` for this agent (a real Anthropic id,
    not a `models.json` gateway id).
 
 1. **Stage 1 (data prep).** Ensures each RabbitCT variant's bulk input is
@@ -211,17 +272,25 @@ backprojection, the default), **RabbitCT-LolaOMP** (OpenMP variant),
   need *correctness* feedback and mostly wait on the LLM gateway, so GPU
   contention is fine. Each writes source + `solution.json` + `agent.jsonl` to its
   workdir.
-- **Phase 2 — MEASURE (serial, GPU-isolated).** `measure.sh` replays each
+- **Phase 2 — MEASURE (serial, isolated).** `agents/measure.sh` replays each
   solution's build/run with 250 ms GPU sampling, producing the graded evidence.
   Strictly serial so each measured run owns the GPU — this is what timing/GPU
   thresholds are judged on. Set `EVAL_SOLVE_PAR=1` for fully-serial behavior.
+- **CPU problems need `EVAL_SOLVE_PAR=1`, not just a serial Phase 2.** The
+  *scored* number is safe either way, since Phase 2 is always serial. But in
+  Phase 1 the agents time their own experiments to decide what to optimize, and
+  N concurrent agents on one CPU node make every one of those timings garbage —
+  which corrupts the agents' reasoning, i.e. the thing under study. On GPU
+  problems the agents lean on correctness feedback instead, so overlap is fine.
 
 ### swe-mini: same two-phase split
 
 swe-mini now mirrors pi: `solve.sh` (Phase 1, runs the mini agent → source +
 solution.json + agent.traj.json, parallelizable up to `EVAL_SOLVE_PAR`) and
-`measure.sh` (Phase 2, replay build/run with GPU sampling, strictly serial).
-`measure.sh` is agent-agnostic — byte-for-byte the same logic as pi's.
+`agents/measure.sh` (Phase 2, replay build/run with GPU sampling, strictly
+serial). Phase 2 is where agents stop differing, so there is exactly one
+`measure.sh` for all of them — the previous per-agent copies were identical
+apart from a default env var and a comment, and had to be fixed twice.
 
 ### claude: token-budget & thinking decisions
 
@@ -340,21 +409,77 @@ claude. A clean green PASS is easiest to demonstrate against a **non-thinking mo
 
 `claude-pro` is Claude Code run against a **personal Anthropic subscription**
 (OAuth to `api.anthropic.com`), not the gateway and not a self-hosted box.
-It is the study's only frontier-model row (`claude-opus-4-8`) and exists to
+It is the study's only frontier-model row (`claude-opus-5`) and exists to
 anchor the open-weight results against a known-strong reference.
 
 - **Auth is a token file, not a gateway key.** `agents/apptainer/claude-pro/.secrets/oauth_token`
   (from `claude setup-token`; path overridable via `OAUTH_TOKEN_FILE`). It plus all
   local scratch (`.setup-home/`, `.cache/`, `.work/`) are gitignored — never commit them.
 - **Stage 0 differs** (see above): token-present + `api.anthropic.com`-reachable,
-  not a gateway completion. `EVAL_MODELS` defaults to `claude-opus-4-8`.
+  not a gateway completion. `EVAL_MODELS` defaults to `claude-opus-5`.
 - **Rate-limited by subscription session, not TPM.** Runs are **5 rounds/problem**
   (scored /5 and /20, not /10 and /40), one problem at a time with spacing between
   them — driven by `scripts/_orchestrate_claude_pro.sh` submitting
   `scripts/_run_one_claude_pro.slurm` per problem. A round that trips the session
   limit produces no `solution.json` (build-fail); those campaigns are re-run clean
   and excluded via `EXCLUDE_CAMPAIGNS` in `report_tables.py`.
-- Phase 1 mirrors `claude/`; Phase 2 reuses `docker/swe-mini/measure.sh`.
+- **No compaction, and no window override — a DELIBERATE asymmetry.**
+  `DISABLE_AUTO_COMPACT=1` keeps compaction off, and the window is left at the
+  model's native size (1M on a current Opus subscription), so total tokens per round
+  run as high as the model allows. The gateway agents are hard-capped at the served
+  model's `max_model_len` of 262144, so claude-pro has ~4x their context. This is
+  intentional: the open-weight rows have a real server-side limit, and the study
+  reports that limit rather than handicapping the frontier row to match it.
+  **State the asymmetry wherever these rows appear side by side.**
+
+  **`CLAUDE_CODE_AUTO_COMPACT_WINDOW` must not be set anywhere in this repo, at any
+  value.** It is a token count, not a compaction toggle (`DISABLE_AUTO_COMPACT` is
+  the toggle), so any value clamps the window — including `0`, which is not
+  "unlimited". There is deliberately no `EVAL_*` knob for it; nothing to
+  misconfigure and nothing to forward.
+
+  **Why the explicit set instead of trusting `--cleanenv`:** the 20260728 Opus-5
+  wave lost **all 5 rounds** to `"Prompt is too long"` at peak contexts of
+  168857–175902 — a 200k wall. Cause was our own environment: `~/.bashrc` on the
+  submitting host exported `CLAUDE_CODE_AUTO_COMPACT_WINDOW=200000`, Slurm's
+  `#!/bin/bash -l` sourced it, and `apptainer exec` (which inherits host env by
+  default) carried it into the container. With `DISABLE_AUTO_COMPACT=1` that clamp
+  is a hard stop rather than a compaction. **That wave measured a config leak, not
+  the model — do not cite it as a capability result.**
+
+  **How to tell a client clamp from a server refusal** (this cost a full wave and
+  ~$25 to work out): in `agent.stream.jsonl`, a client-side refusal ends with an
+  assistant message whose `"model"` is `"<synthetic>"` and a `result` event with
+  `"api_error_status": null` — the request was never sent, so there is no HTTP 400
+  and the `request_id`s present belong to earlier successful calls. A genuine
+  entitlement refusal instead returns `400 invalid_request_error` with its own
+  `request_id` and a message naming the plan. Check those two fields **first**;
+  probing env vars is the slow way round and is easy to get wrong (a probe run
+  through a login shell with `HOME` preserved re-sources `~/.bashrc` and silently
+  restores the very variable you unset).
+
+  **Fix landed:** every apptainer `host.sh` (`pi`, `swe-mini`, `claude`,
+  `claude-pro`) now passes `--cleanenv` to `apptainer exec`, which blocks host-env
+  inheritance outright instead of relying on nobody's `~/.bashrc` exporting the
+  wrong thing. The tradeoff: nothing implicit reaches the container anymore, so
+  every var a script needs (`EVAL_*`, `EVAL_EFFORT`, etc.) must be forwarded
+  explicitly via `--env` — each `host.sh` does this already; if you add a new
+  `EVAL_*` knob, forward it there too or it silently reads as unset inside.
+- Phase 1 mirrors `claude/`; Phase 2 reuses `agents/measure.sh`.
+
+### Packing multiple campaigns onto one GPU (claude only)
+
+A wave script can run 2-3 whole `claude` campaigns (different models/providers)
+as background jobs inside ONE SLURM allocation instead of one GPU reservation
+per campaign — Phase 1 (solve) is already GPU-contention-tolerant (see the pi
+rationale above; claude shares it), so the only thing packing threatens is
+Phase 2 (measure), where wall-clock IS the score. `agents/apptainer/claude/host.sh`
+guards this with a `flock` (`MEASURE_LOCK`, keyed off `$TMPDIR`) around both the
+measure step and the trailing `check_pass.py`/`trace_stats.py` regen, so
+concurrent `host.sh` instances packed into the same job still serialize exactly
+where isolation matters. Set env vars with plain `export` inside a packing
+script, not `sbatch --export=...` — `--export` splits on every comma, which
+silently truncates a comma-separated `EVAL_PROBLEMS` to its first entry.
 
 ### The solution.json contract
 
@@ -480,8 +605,11 @@ and the verdict is sourced from `nsys` rather than the cudaEvent fallback.
 | `EVAL_PROBLEMS` | `RabbitCT-LolaBunny` | Comma-separated problem names. |
 | `EVAL_SIZE` | `256` | Problem size (e.g. RabbitCT volume size). |
 | `EVAL_VARIANT` | `LolaBunnyGPU` | Variant name for the solution. |
-| `EVAL_SOLVE_PAR` | `4` | Max concurrent Phase-1 solve containers (pi only; shared GPU). `1` = serial. Phase 2 is always serial. |
-| `MODELS_CONFIG` | `agents/apptainer/pi/models.json` | Gateway `baseUrl` + `apiKey` + model IDs. |
+| `EVAL_SOLVE_PAR` | `4` | Max concurrent Phase-1 solve containers (pi only; shared GPU). `1` = serial. Phase 2 is always serial. Use `1` for CPU problems — see "How a run works end-to-end". |
+| `EVAL_GPU` | `auto` | Apptainer GPU passthrough. `auto` = pass `--nv` only if `nvidia-smi` reports a GPU; `1` force on, `0` force off (CPU-only test-cluster nodes). |
+| `EVAL_PROVIDER` | `local` | Selects `providers.<name>` in `MODELS_CONFIG` (e.g. `local` = hub, `llama`/`gemmasglang`/`osslocal`/`kimi3` = other self-hosted or separately-keyed endpoints). |
+| `EVAL_EFFORT` | `high` | claude/claude-pro only: `claude --effort <level>`. Real lever for claude-pro (Anthropic model); kept identical for claude against the gateway for a clean comparison, but a no-op there — the gateway models declare `supportsReasoningEffort:false`. |
+| `MODELS_CONFIG` | `agents/apptainer/pi/models.json` | Gateway `baseUrl` + `apiKey` + model IDs. The tracked file carries the real `baseUrl` but a placeholder `apiKey` (`PASTE_KEY_IN_models.local.json`) — real keys go in the gitignored sibling `agents/apptainer/pi/models.local.json`, which every wave/smoke script points `MODELS_CONFIG` at explicitly. A forgotten key then fails fast (401) instead of a real one landing in git. |
 | `DATA_ROOT` | `<repo>/data` | Where bulk input data lives. |
 
 ---
@@ -499,7 +627,28 @@ NHR endpoint), and a VPN can make a reachable host unreachable. Probe it from a
 container so you test the *same* network path the agents use:
 
 ```bash
-# Reachability + model list (substitute baseUrl/apiKey from models.json):
+# Reachability + model list (substitute baseUrl/apiKey from models.json).
+# NOTE: jq is NOT installed on the test-cluster LOGIN node (login-node), so run
+# this probe there with python3 instead. It IS present on the cpu-node compute node
+# (confirmed 2026-07-27: run_eval.sh's Stage-0 preflight took its jq branch and
+# printed "[ok] ... (HTTP 200)" inside a batch job). Do not assume either way for
+# a node you have not checked — where jq is missing, Stage 0 WARN-skips silently
+# and this manual probe becomes the only gate a wave gets:
+#   eval "$(python3 -c 'import json;c=json.load(open("agents/apptainer/pi/models.json"))["providers"]["local"];print(f"BASE={c[\"baseUrl\"]}\nKEY={c[\"apiKey\"]}")')"
+# If the port refuses the connection while `ip route get <ip>` shows a route,
+# the gateway has moved or is down — a self-hosted sglang IP is re-assigned per
+# session. The stable endpoint is the hub: https://gateway.example.org/v1
+# (LiteLLM proxy over vLLM). Verified 2026-07-27 from login-node, with the key in
+# the untracked agents/apptainer/pi/models.local.json (MODELS_CONFIG points at it):
+#   * /v1/models -> 200, 13 models served CONCURRENTLY (unlike sglang's one-at-a-
+#     time; pinning every claude tier slot to EVAL_MODEL is still what you want,
+#     it just stops being mandatory).
+#   * /v1/chat/completions -> 200, and tool_calls come back STRUCTURED, not
+#     leaked into content (Gotcha 4 satisfied for deepseek-ai/DeepSeek-V4-Flash).
+#   * /v1/messages -> 200 including stream:true with tool_use +
+#     input_json_delta, so the Anthropic-protocol claude agent works against it.
+#   * max_tokens 65536 accepted (1048576 is not a real cap — it exceeded the
+#     model's own contextWindow).
 BASE=$(jq -r '.providers.local.baseUrl' agents/apptainer/pi/models.json)
 KEY=$(jq -r '.providers.local.apiKey'  agents/apptainer/pi/models.json)
 curl -s "$BASE/models" -H "Authorization: Bearer $KEY" | jq '.data[].id'
@@ -604,9 +753,10 @@ python3 checks/collect_results.py                                  # → results
 ### Adding a new agent
 
 Add `agents/docker/<name>/` with a `Dockerfile`, a `host.sh` orchestrator, and
-its in-container `solve.sh`/`measure.sh` pair — mirror pi or swe-mini, swapping
-only the agent-invocation block in `solve.sh` (`measure.sh` is agent-agnostic
-and can be copied verbatim). The container must write `.eval/facts.json` +
+its in-container `solve.sh` — mirror pi or swe-mini, swapping only the
+agent-invocation block. Do NOT add a `measure.sh`: bind the shared
+`agents/measure.sh`, as every existing host.sh does. The container must write
+`.eval/facts.json` +
 evidence + the agent trace. Run with `EVAL_AGENT=<name>`. Checks are reused unchanged.
 
 ### Adding a model
@@ -709,3 +859,13 @@ the nsys step was added will silently use the fallback. After (re)building, run
 `(cudaEvent)`. The nsys install is isolated + non-fatal on purpose so a devtools
 -repo hiccup can't break the agent toolchain — but that also means a failed nsys
 install is easy to miss; the smoke test is how you catch it.
+
+**9. Stage a job workdir with `rsync -a`, never `cp -a`.** All four apptainer
+`host.sh` scripts copy the problem into a per-job workdir this way. `cp -a`
+tries to replicate ACLs, and the test-cluster filesystem rejects that —
+"preserving permissions ... Operation not supported" on every single file,
+~25 lines of noise per round. `rsync -a` preserves mode/mtime/symlinks without
+touching ACLs. mtime matters beyond the noise: `measure_job`'s
+`rsync --compare-dest` decides "did the agent modify this file?" from
+size+mtime, so a copy that reset mtimes would flag every untouched file as
+agent-modified.
