@@ -9,7 +9,7 @@
 # mini.yaml. It still reads the gateway baseUrl + apiKey from /models.json
 # (bind-mounted) and gets a clean staging HOME so its ~/.claude state doesn't
 # land in your real home. The in-container measure.sh is agent-agnostic and is
-# reused verbatim from agents/docker/swe-mini/.
+# the single shared copy at agents/measure.sh.
 #
 # IMPORTANT (vs swe-mini's `--home …:/root`): Claude Code's native installer puts
 # the binary under /root/.local (bin/claude -> /root/.local/share/claude/...).
@@ -24,7 +24,7 @@ PROBLEM_DIR="$ROOT/problems"
 TRACE_ROOT="$ROOT/traces"
 AGENT_SIF="${AGENT_SIF:-$ROOT/agents/apptainer/claude/agent.sif}"
 SOLVE_SCRIPT="$ROOT/agents/apptainer/claude/solve.sh"
-MEASURE_SCRIPT="$ROOT/agents/docker/swe-mini/measure.sh"   # agent-agnostic, shared
+MEASURE_SCRIPT="$ROOT/agents/measure.sh"   # agent-agnostic, shared by every agent
 MODELS_CONFIG="${MODELS_CONFIG:-$ROOT/agents/apptainer/pi/models.json}"
 EVAL_ROUNDS="${EVAL_ROUNDS:-20}"
 EVAL_PROBLEMS="${EVAL_PROBLEMS:-RabbitCT-LolaBunny}"
@@ -32,15 +32,28 @@ EVAL_SIZE="${EVAL_SIZE:-256}"
 EVAL_VARIANT="${EVAL_VARIANT:-LolaBunnyGPU}"
 EVAL_SOLVE_PAR="${EVAL_SOLVE_PAR:-4}"
 EVAL_MAX_TURNS="${EVAL_MAX_TURNS:-120}"
+# Reasoning effort (`claude --effort`). Kept identical to claude-pro so the
+# gateway-vs-subscription comparison differs only in auth/model; expected to be a
+# no-op for non-Anthropic gateway models (see solve.sh).
+EVAL_EFFORT="${EVAL_EFFORT:-high}"
 # Selects providers.<name> in models.json (default "local" = gateway; "llama" =
-# host). Forwarded via --env below — apptainer exec does NOT inherit host env.
+# host). Forwarded via --env below. NB: apptainer exec inherits the host environment by DEFAULT; we pass --cleanenv
+#   to block that, so anything needed inside must be forwarded explicitly.
 EVAL_PROVIDER="${EVAL_PROVIDER:-local}"
 # Claude Code token knobs (consumed by solve.sh). Empty = use solve.sh's own
 # default (output cap 64000; thinking unset = max). MUST be forwarded explicitly
-# via --env below — apptainer exec does NOT inherit the host environment here.
+# via --env below. NB: apptainer exec inherits the host environment by DEFAULT; we pass --cleanenv
+#   to block that, so anything needed inside must be forwarded explicitly.
 EVAL_MAX_OUTPUT_TOKENS="${EVAL_MAX_OUTPUT_TOKENS:-}"
 EVAL_MAX_THINKING_TOKENS="${EVAL_MAX_THINKING_TOKENS:-}"
 DATA_ROOT="${DATA_ROOT:-$ROOT/data}"
+# GPU-exclusive lock for Phase 2 (measure) + the trailing global stats regen.
+# Solve is contention-tolerant (see solve.sh), but multiple campaigns can now
+# share one node/GPU (packed run) — measure needs real isolation for valid
+# timing, and the stats scripts write shared stats.json files across the whole
+# traces/ tree. Keyed off $TMPDIR so it's shared by every host.sh instance
+# packed into the same SLURM job, and harmless (single-process) otherwise.
+MEASURE_LOCK="${MEASURE_LOCK:-${TMPDIR:-/tmp}/agent-eval-measure.lock}"
 
 DATE_TAG=$(date +%Y%m%d-%H%M%S)
 echo "ROOT directory was set to $ROOT"
@@ -53,6 +66,18 @@ if [[ ! -f "$AGENT_SIF" ]]; then
     echo "    $AGENT_SIF $ROOT/agents/apptainer/claude/agent.def" >&2
     exit 1
 fi
+
+# GPU passthrough is conditional. The harness now also runs CPU-only problems
+# (e.g. 2D-seq on the test cluster), where --nv on a node without an NVIDIA
+# driver is at best noise. auto = pass --nv only when a GPU is actually visible;
+# EVAL_GPU=1 forces it on, EVAL_GPU=0 forces it off.
+NV_FLAG=()
+if [[ "${EVAL_GPU:-auto}" == "1" ]] || { [[ "${EVAL_GPU:-auto}" == "auto" ]] &&
+      command -v nvidia-smi >/dev/null 2>&1 &&
+      nvidia-smi -L 2>/dev/null | grep -q "^GPU"; }; then
+    NV_FLAG=(--nv)
+fi
+echo "GPU passthrough: ${NV_FLAG[*]:-none (CPU-only run)}"
 
 WORK_ROOT=$(mktemp -d)
 trap 'rm -rf "$WORK_ROOT"' EXIT
@@ -95,14 +120,22 @@ solve_job() {
 
     echo "[solve] problem: $PROBLEM_NAME | agent: $AGENT | model: $MODEL | round: $ROUND"
     mkdir -p "$WORK_DIR" "$CLAUDEHOME"
-    cp -a "$PROBLEM"/. "$WORK_DIR"/
+    # rsync, not `cp -a`: cp -a tries to replicate ACLs, and on the test-cluster
+    # filesystem that fails with "preserving permissions ... Operation not
+    # supported" for every single file — ~25 lines of noise per round, drowning
+    # the log. rsync -a preserves what actually matters here (mode, mtime,
+    # symlinks) and does not touch ACLs unless asked with -A. mtime matters: the
+    # `rsync --compare-dest` in measure_job decides "did the agent modify this
+    # file?" from size+mtime, so a copy that reset mtimes would make every file
+    # look tampered with.
+    rsync -a "$PROBLEM"/ "$WORK_DIR"/
 
     local DATA_BIND=()
     if [[ -d "$DATA_ROOT/$PROBLEM_NAME/RabbitInput" ]]; then
         DATA_BIND=(--bind "$DATA_ROOT/$PROBLEM_NAME/RabbitInput:/problem/RabbitInput:ro")
     fi
 
-    apptainer exec --nv \
+    apptainer exec --cleanenv "${NV_FLAG[@]}" \
         --home "$CLAUDEHOME" \
         --env "EVAL_AGENT=$AGENT" \
         --env "EVAL_MODEL=$MODEL" \
@@ -113,6 +146,7 @@ solve_job() {
         --env "EVAL_MAX_OUTPUT_TOKENS=$EVAL_MAX_OUTPUT_TOKENS" \
         --env "EVAL_MAX_THINKING_TOKENS=$EVAL_MAX_THINKING_TOKENS" \
         --env "EVAL_PROVIDER=$EVAL_PROVIDER" \
+        --env "EVAL_EFFORT=$EVAL_EFFORT" \
         --bind "$WORK_DIR:/problem" \
         --bind "$MODELS_CONFIG:/models.json:ro" \
         --bind "$SOLVE_SCRIPT:/solve.sh:ro" \
@@ -143,17 +177,20 @@ measure_job() {
         GRADE_BIND=(--bind "$ROOT/checks/$PROBLEM_NAME/bench.cu:/grade/bench.cu:ro")
     fi
 
-    apptainer exec --nv \
-        --env "EVAL_AGENT=$AGENT" \
-        --env "EVAL_MODEL=$MODEL" \
-        --env "EVAL_ROUND=$ROUND" \
-        --env "EVAL_SIZE=$EVAL_SIZE" \
-        --env "EVAL_VARIANT=$EVAL_VARIANT" \
-        --bind "$WORK_DIR:/problem" \
-        --bind "$MEASURE_SCRIPT:/measure.sh:ro" \
-        "${DATA_BIND[@]}" \
-        "${GRADE_BIND[@]}" \
-        "$AGENT_SIF" /bin/bash -l /measure.sh /problem
+    (
+        flock -x 200
+        apptainer exec --cleanenv "${NV_FLAG[@]}" \
+            --env "EVAL_AGENT=$AGENT" \
+            --env "EVAL_MODEL=$MODEL" \
+            --env "EVAL_ROUND=$ROUND" \
+            --env "EVAL_SIZE=$EVAL_SIZE" \
+            --env "EVAL_VARIANT=$EVAL_VARIANT" \
+            --bind "$WORK_DIR:/problem" \
+            --bind "$MEASURE_SCRIPT:/measure.sh:ro" \
+            "${DATA_BIND[@]}" \
+            "${GRADE_BIND[@]}" \
+            "$AGENT_SIF" /bin/bash -l /measure.sh /problem
+    ) 200>"$MEASURE_LOCK"
 
     mkdir -p "$TRACE_DIR"
     rsync -a --prune-empty-dirs --compare-dest="$PROBLEM/" "$WORK_DIR/" "$TRACE_DIR/"
@@ -188,8 +225,11 @@ for job in "${JOBS[@]}"; do
 done
 
 if command -v python3 >/dev/null 2>&1; then
-    python3 "$ROOT/checks/check_pass.py" --traces "$TRACE_ROOT"
-    python3 "$ROOT/checks/trace_stats.py" --traces "$TRACE_ROOT"
+    (
+        flock -x 200
+        python3 "$ROOT/checks/check_pass.py" --traces "$TRACE_ROOT"
+        python3 "$ROOT/checks/trace_stats.py" --traces "$TRACE_ROOT"
+    ) 200>"$MEASURE_LOCK"
 else
     echo "WARN: python3 not found on host — skipping pass checks. Run checks/check_pass.py + trace_stats.py manually." >&2
 fi

@@ -25,7 +25,7 @@ TRACE_ROOT="$ROOT/traces"
 AGENT_SIF="${AGENT_SIF:-$ROOT/agents/apptainer/pi/agent.sif}"
 # Shared, runtime-agnostic in-container scripts (canonical copy under docker/).
 SOLVE_SCRIPT="$ROOT/agents/docker/pi/solve.sh"
-MEASURE_SCRIPT="$ROOT/agents/docker/pi/measure.sh"
+MEASURE_SCRIPT="$ROOT/agents/measure.sh"
 MODELS_CONFIG="${MODELS_CONFIG:-$ROOT/agents/apptainer/pi/models.json}"
 EVAL_ROUNDS="${EVAL_ROUNDS:-20}"
 EVAL_PROBLEMS="${EVAL_PROBLEMS:-RabbitCT-LolaBunny}"
@@ -56,6 +56,18 @@ if [[ ! -f "$AGENT_SIF" ]]; then
 fi
 
 # WORK_ROOT goes on node-local SSD via \$TMPDIR (set by SLURM); mktemp honors it.
+# GPU passthrough is conditional. The harness now also runs CPU-only problems
+# (e.g. 2D-seq on the test cluster), where --nv on a node without an NVIDIA
+# driver is at best noise. auto = pass --nv only when a GPU is actually visible;
+# EVAL_GPU=1 forces it on, EVAL_GPU=0 forces it off.
+NV_FLAG=()
+if [[ "${EVAL_GPU:-auto}" == "1" ]] || { [[ "${EVAL_GPU:-auto}" == "auto" ]] &&
+      command -v nvidia-smi >/dev/null 2>&1 &&
+      nvidia-smi -L 2>/dev/null | grep -q "^GPU"; }; then
+    NV_FLAG=(--nv)
+fi
+echo "GPU passthrough: ${NV_FLAG[*]:-none (CPU-only run)}"
+
 WORK_ROOT=$(mktemp -d)
 trap 'rm -rf "$WORK_ROOT"' EXIT
 
@@ -105,7 +117,15 @@ solve_job() {
 
     echo "[solve] problem: $PROBLEM_NAME | agent: $AGENT | model: $MODEL | round: $ROUND"
     mkdir -p "$WORK_DIR"
-    cp -a "$PROBLEM"/. "$WORK_DIR"/
+    # rsync, not `cp -a`: cp -a tries to replicate ACLs, and on the test-cluster
+    # filesystem that fails with "preserving permissions ... Operation not
+    # supported" for every single file — ~25 lines of noise per round, drowning
+    # the log. rsync -a preserves what actually matters here (mode, mtime,
+    # symlinks) and does not touch ACLs unless asked with -A. mtime matters: the
+    # `rsync --compare-dest` in measure_job decides "did the agent modify this
+    # file?" from size+mtime, so a copy that reset mtimes would make every file
+    # look tampered with.
+    rsync -a "$PROBLEM"/ "$WORK_DIR"/
 
     # pi reads ~/.pi/agent/models.json. Apptainer runs as you with HOME=your real
     # home, so stage a clean HOME holding the config and bind it to /root.
@@ -117,7 +137,7 @@ solve_job() {
         DATA_BIND=(--bind "$DATA_ROOT/$PROBLEM_NAME/RabbitInput:/problem/RabbitInput:ro")
     fi
 
-    apptainer exec --nv \
+    apptainer exec --cleanenv "${NV_FLAG[@]}" \
         --home "$PIHOME:/root" \
         --env "EVAL_AGENT=$AGENT" \
         --env "EVAL_MODEL=$MODEL" \
@@ -158,7 +178,7 @@ measure_job() {
         GRADE_BIND=(--bind "$ROOT/checks/$PROBLEM_NAME/bench.cu:/grade/bench.cu:ro")
     fi
 
-    apptainer exec --nv \
+    apptainer exec --cleanenv "${NV_FLAG[@]}" \
         --env "EVAL_AGENT=$AGENT" \
         --env "EVAL_MODEL=$MODEL" \
         --env "EVAL_ROUND=$ROUND" \

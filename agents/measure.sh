@@ -1,13 +1,25 @@
 #! /bin/bash
 # Phase 2 (MEASURE): replay the agent's build/run and capture graded evidence.
 #
-# This is the GPU-CONTENTION-INTOLERANT half of the old guest.sh. It must run
-# SERIALLY, one container per physical GPU, so the wall-clock timing and the
-# 250ms gpu_usage.csv sampling reflect THIS run alone — co-located GPU work
-# would corrupt exactly the numbers the host-side checks grade on.
+# ONE canonical copy, shared by every agent and both runtimes — every host.sh
+# binds this same file to /measure.sh. It is agent-agnostic by construction: it
+# reads solution.json, replays it, and records raw receipts. (It previously
+# existed as two near-identical copies under agents/docker/{pi,swe-mini}/, which
+# meant every fix had to be made twice.)
+#
+# This is the CONTENTION-INTOLERANT half of the old guest.sh. It must run
+# SERIALLY, so the wall-clock timing and the 250ms gpu_usage.csv sampling
+# reflect THIS run alone — co-located work would corrupt exactly the numbers the
+# host-side checks grade on. That applies to CPU problems too: a CPU kernel
+# timed next to three other builds measures the neighbours, not the kernel.
+#
+# Runs on GPU and CPU-only nodes alike. The GPU evidence below is best-effort:
+# where there is no nvidia-smi there is no gpu_usage.csv, and the CPU problems'
+# checks do not ask for one.
 #
 # Input: a workdir already populated by solve.sh (solution.json + sources).
-# Output: .eval/ (facts.json, build.log, run.log, gpu_info.txt, gpu_usage.csv).
+# Output: .eval/ (facts.json, build.log, run.log, host_info.txt, and on GPU
+# nodes gpu_info.txt + gpu_usage.csv).
 # Interprets nothing — pass/fail judgment happens host-side in check_pass.py.
 
 set -euo pipefail
@@ -20,6 +32,12 @@ EVAL_SIZE="${EVAL_SIZE:-256}"
 EVAL_VARIANT="${EVAL_VARIANT:-LolaBunnyGPU}"
 
 DATE_TAG=$(date +%Y%m%d-%H%M%S)
+
+# Which machine produced this measurement. Correctness (the DIGEST) is
+# node-independent, but the ranking metric is wall time on a specific CPU, so a
+# round is only comparable to another round from the same node. Record it in
+# every trace rather than relying on whoever submitted the job to remember.
+EVAL_NODE="${SLURMD_NODENAME:-$(hostname -s 2>/dev/null || hostname)}"
 
 cd "$PROBLEM_DIR"
 
@@ -47,6 +65,7 @@ write_result() {
 		--arg date "$DATE_TAG" \
 		--argjson size "$EVAL_SIZE" \
 		--arg variant "$EVAL_VARIANT" \
+		--arg node "$EVAL_NODE" \
 		--arg build_cmd "$BUILD_CMD" \
 		--argjson build_status "$BUILD_STATUS" \
 		--argjson build_start "$BUILD_START" \
@@ -56,7 +75,7 @@ write_result() {
 		--argjson run_start "$RUN_START" \
 		--argjson run_end "$RUN_END" \
 		'{model:$model, agent:$agent, round:$round, date:$date, size:$size,
-		  variant:$variant, source:"solution.json",
+		  variant:$variant, node:$node, source:"solution.json",
 		  build:{cmd:$build_cmd, status:$build_status, start:$build_start, end:$build_end},
 		  run:{cmd:$run_cmd, status:$run_status, start:$run_start, end:$run_end}}' \
 		> "$EVAL_DIR/facts.json"
@@ -71,9 +90,10 @@ write_fail_result() {
 		--arg date "$DATE_TAG" \
 		--argjson size "$EVAL_SIZE" \
 		--arg variant "$EVAL_VARIANT" \
+		--arg node "$EVAL_NODE" \
 		--arg reason "$reason" \
 		'{model:$model, agent:$agent, round:$round, date:$date, size:$size,
-		  variant:$variant, source:"solution.json", failure_reason:$reason,
+		  variant:$variant, node:$node, source:"solution.json", failure_reason:$reason,
 		  build:{status:1, start:0, end:0},
 		  run:{status:1, start:0, end:0}}' \
 		> "$EVAL_DIR/facts.json"
@@ -102,7 +122,23 @@ fi
 echo "Harness replaying: build='$BUILD_CMD' run='$RUN_CMD' variant='$EVAL_VARIANT'"
 
 # ---------------------------------------------------------------------------
-# GPU evidence
+# Host evidence. For CPU problems this IS the hardware record: which node, which
+# CPU, how many cores, what the topology looked like from inside the container.
+# Cheap, and it is the only way to tell after the fact whether two rounds are
+# even comparable.
+# ---------------------------------------------------------------------------
+{
+	echo "node: $EVAL_NODE"
+	echo "date: $(date -Is)"
+	echo "nproc: $(nproc 2>/dev/null || echo '?')"
+	echo "--- lscpu ---"
+	lscpu 2>/dev/null || echo "lscpu unavailable"
+	echo "--- numactl -H ---"
+	numactl -H 2>/dev/null || echo "numactl unavailable"
+} > "$EVAL_DIR/host_info.txt" 2>&1
+
+# ---------------------------------------------------------------------------
+# GPU evidence (best-effort — CPU-only nodes simply have none)
 # ---------------------------------------------------------------------------
 GPU_INFO="$EVAL_DIR/gpu_info.txt"
 GPU_USAGE="$EVAL_DIR/gpu_usage.csv"

@@ -15,7 +15,7 @@ PROBLEM_DIR="$ROOT/problems"
 TRACE_ROOT="$ROOT/traces"
 AGENT_SIF="${AGENT_SIF:-$ROOT/agents/apptainer/swe-mini/agent.sif}"
 SOLVE_SCRIPT="$ROOT/agents/docker/swe-mini/solve.sh"
-MEASURE_SCRIPT="$ROOT/agents/docker/swe-mini/measure.sh"
+MEASURE_SCRIPT="$ROOT/agents/measure.sh"
 MINI_CONFIG="${MINI_CONFIG:-$ROOT/agents/docker/swe-mini/mini.yaml}"
 MODELS_CONFIG="${MODELS_CONFIG:-$ROOT/agents/apptainer/pi/models.json}"
 EVAL_ROUNDS="${EVAL_ROUNDS:-20}"
@@ -24,7 +24,8 @@ EVAL_SIZE="${EVAL_SIZE:-256}"
 EVAL_VARIANT="${EVAL_VARIANT:-LolaBunnyGPU}"
 EVAL_SOLVE_PAR="${EVAL_SOLVE_PAR:-4}"
 # Selects providers.<name> in models.json (default "local" = gateway; "llama" =
-# host). Forwarded via --env below — apptainer exec does NOT inherit host env.
+# host). Forwarded via --env below. NB: apptainer exec inherits the host environment by DEFAULT; we pass --cleanenv
+#   to block that, so anything needed inside must be forwarded explicitly.
 EVAL_PROVIDER="${EVAL_PROVIDER:-local}"
 DATA_ROOT="${DATA_ROOT:-$ROOT/data}"
 
@@ -39,6 +40,18 @@ if [[ ! -f "$AGENT_SIF" ]]; then
     echo "    $AGENT_SIF $ROOT/agents/apptainer/swe-mini/agent.def" >&2
     exit 1
 fi
+
+# GPU passthrough is conditional. The harness now also runs CPU-only problems
+# (e.g. 2D-seq on the test cluster), where --nv on a node without an NVIDIA
+# driver is at best noise. auto = pass --nv only when a GPU is actually visible;
+# EVAL_GPU=1 forces it on, EVAL_GPU=0 forces it off.
+NV_FLAG=()
+if [[ "${EVAL_GPU:-auto}" == "1" ]] || { [[ "${EVAL_GPU:-auto}" == "auto" ]] &&
+      command -v nvidia-smi >/dev/null 2>&1 &&
+      nvidia-smi -L 2>/dev/null | grep -q "^GPU"; }; then
+    NV_FLAG=(--nv)
+fi
+echo "GPU passthrough: ${NV_FLAG[*]:-none (CPU-only run)}"
 
 WORK_ROOT=$(mktemp -d)
 trap 'rm -rf "$WORK_ROOT"' EXIT
@@ -81,14 +94,22 @@ solve_job() {
 
     echo "[solve] problem: $PROBLEM_NAME | agent: $AGENT | model: $MODEL | round: $ROUND"
     mkdir -p "$WORK_DIR" "$SWEHOME"
-    cp -a "$PROBLEM"/. "$WORK_DIR"/
+    # rsync, not `cp -a`: cp -a tries to replicate ACLs, and on the test-cluster
+    # filesystem that fails with "preserving permissions ... Operation not
+    # supported" for every single file — ~25 lines of noise per round, drowning
+    # the log. rsync -a preserves what actually matters here (mode, mtime,
+    # symlinks) and does not touch ACLs unless asked with -A. mtime matters: the
+    # `rsync --compare-dest` in measure_job decides "did the agent modify this
+    # file?" from size+mtime, so a copy that reset mtimes would make every file
+    # look tampered with.
+    rsync -a "$PROBLEM"/ "$WORK_DIR"/
 
     local DATA_BIND=()
     if [[ -d "$DATA_ROOT/$PROBLEM_NAME/RabbitInput" ]]; then
         DATA_BIND=(--bind "$DATA_ROOT/$PROBLEM_NAME/RabbitInput:/problem/RabbitInput:ro")
     fi
 
-    apptainer exec --nv \
+    apptainer exec --cleanenv "${NV_FLAG[@]}" \
         --home "$SWEHOME:/root" \
         --env "EVAL_AGENT=$AGENT" \
         --env "EVAL_MODEL=$MODEL" \
@@ -128,7 +149,7 @@ measure_job() {
         GRADE_BIND=(--bind "$ROOT/checks/$PROBLEM_NAME/bench.cu:/grade/bench.cu:ro")
     fi
 
-    apptainer exec --nv \
+    apptainer exec --cleanenv "${NV_FLAG[@]}" \
         --env "EVAL_AGENT=$AGENT" \
         --env "EVAL_MODEL=$MODEL" \
         --env "EVAL_ROUND=$ROUND" \

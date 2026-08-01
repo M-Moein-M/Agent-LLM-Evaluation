@@ -7,7 +7,7 @@ TRACE_ROOT="$ROOT/traces"
 DOCKERFILE="$ROOT/agents/docker/pi/Dockerfile"
 IMAGE="agent-eval-pi:latest"
 SOLVE_SCRIPT="$ROOT/agents/docker/pi/solve.sh"
-MEASURE_SCRIPT="$ROOT/agents/docker/pi/measure.sh"
+MEASURE_SCRIPT="$ROOT/agents/measure.sh"
 MODELS_CONFIG="${MODELS_CONFIG:-$ROOT/agents/apptainer/pi/models.json}"
 EVAL_ROUNDS="${EVAL_ROUNDS:-20}"
 EVAL_PROBLEMS="${EVAL_PROBLEMS:-RabbitCT-LolaBunny}"
@@ -92,7 +92,15 @@ solve_job() {
 
     echo "[solve] problem: $PROBLEM_NAME | agent: $AGENT | model: $MODEL | round: $ROUND"
     mkdir -p "$WORK_DIR"
-    cp -a "$PROBLEM"/. "$WORK_DIR"/
+    # rsync, not `cp -a`: cp -a tries to replicate ACLs, and on the test-cluster
+    # filesystem that fails with "preserving permissions ... Operation not
+    # supported" for every single file — ~25 lines of noise per round, drowning
+    # the log. rsync -a preserves what actually matters here (mode, mtime,
+    # symlinks) and does not touch ACLs unless asked with -A. mtime matters: the
+    # `rsync --compare-dest` in measure_job decides "did the agent modify this
+    # file?" from size+mtime, so a copy that reset mtimes would make every file
+    # look tampered with.
+    rsync -a "$PROBLEM"/ "$WORK_DIR"/
 
     # Read-only mount for problems whose bulk input data lives in $DATA_ROOT.
     local DATA_MOUNT=()
