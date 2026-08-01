@@ -14,7 +14,7 @@ Good-enough / minimalist; normalize and polish after the first run.
 - [x] **Complete the claude apptainer agent.** DONE — added `host.sh` (mirrors
   `agents/apptainer/swe-mini/host.sh`) + `solve.sh` (runs Claude Code headless,
   Anthropic protocol → `agent.stream.jsonl`), reusing the agent-agnostic
-  `agents/docker/swe-mini/measure.sh` for Phase 2; rewrote `agent.def` onto the
+  `agents/measure.sh` for Phase 2; rewrote `agent.def` onto the
   CUDA-devel base (+nsys) so the measure phase can compile/run. Cap: Claude Code
   `--max-turns` (`EVAL_MAX_TURNS`, default 120). Compaction: `trace_stats.py`
   gained a `parse_claude` for the stream-json trace (turns/steps/tokens +

@@ -27,6 +27,12 @@ eval-*.out
 results/
 report.md
 results.md
+agent_eval_report.html
+
+# SLURM/orchestrator logs at the repo root, and the per-job log dirs
+# packed-campaign scripts write (eval-<jobid>-groups/).
+smoke-*.out
+eval-*-groups/
 
 # Work-in-progress, deliberately kept out of git for now
 problems/MD-Bench/
@@ -49,3 +55,6 @@ agents/apptainer/claude-pro/.work/
 # run artifacts: SLURM/orchestrator logs and the trace archive (never commit)
 logs/
 traces.tar
+
+# Real gateway credentials — never commit.
+models.local.json

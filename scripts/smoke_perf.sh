@@ -18,7 +18,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SIF="${AGENT_SIF:-$ROOT/agents/apptainer/pi/agent.sif}"
-MEASURE="$ROOT/agents/docker/pi/measure.sh"
+MEASURE="$ROOT/agents/measure.sh"
 BENCH="$ROOT/checks/tiled-gemm/bench.cu"
 PROBLEM="$ROOT/problems/tiled-gemm"
 
