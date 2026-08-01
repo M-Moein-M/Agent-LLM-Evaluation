@@ -2,6 +2,14 @@
  * All rights reserved.
  * Use of this source code is governed by a MIT-style
  * license that can be found in the LICENSE file.    */
+
+/* Harness-owned driver. DO NOT MODIFY.
+ *
+ * This file defines what is being measured: the timed region is exactly the
+ * call to solve(), and the SOLVE_TIME line it prints is the number the
+ * evaluation harness ranks on. It is frozen for the same reason verify.c is —
+ * a solution that edits the timer is not a faster solution. Setup, allocation
+ * and the solver itself all live in files you are free to change. */
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -9,6 +17,7 @@
 #include "parameter.h"
 #include "solver.h"
 #include "timing.h"
+#include "verify.h"
 
 #define LIKWID_PROFILE(tag, call)                                              \
   startTime = getTimeStamp();                                                  \
@@ -33,11 +42,16 @@ int main(int argc, char **argv) {
   // printParameter(&params);
 
   initSolver(&solver, &params, 2);
-  writeResult(&solver, "p-0.dat");
+  if (getenv("POISSON_WRITE_FIELD")) writeResult(&solver, "p-0.dat");
 
   LIKWID_PROFILE("SOR", solve);
-  printf(" %.2fs\n", endTime - startTime);
-  writeResult(&solver, "p-final.dat");
+  /* Tagged and at microsecond resolution on purpose: the harness matches this
+     line by its SOLVE_TIME prefix, so no other output can be mistaken for it,
+     and a solver that gets from ~100s down to well under a second is still
+     resolved. */
+  printf("SOLVE_TIME %.6fs\n", endTime - startTime);
+  printDigest(&solver);
+  if (getenv("POISSON_WRITE_FIELD")) writeResult(&solver, "p-final.dat");
 
   LIKWID_MARKER_CLOSE;
   return EXIT_SUCCESS;

@@ -1,5 +1,12 @@
 # Problem specific Data:
 # ---------------------
+#
+# Benchmark workload. Do not edit: the evaluation harness re-runs the solver
+# with this exact file and compares the resulting DIGEST line to a reference.
+#
+# eps 0.0 makes the residual test never trigger, so the solver performs
+# exactly `itermax` sweeps. Every variant therefore does the same amount of
+# arithmetic and the only thing that differs is how long it takes.
 
 name poisson
 
@@ -8,14 +15,14 @@ name poisson
 
 xlength    1.0		# domain size in x-direction
 ylength    1.0		# domain size in y-direction
-imax       300		# number of interior cells in x-direction
-jmax       300		# number of interior cells in y-direction
+imax       8192		# number of interior cells in x-direction
+jmax       8192		# number of interior cells in y-direction
 
 # Pressure Iteration Data:
 # -----------------------
 
-itermax  1000000		# maximal number of pressure iteration in one time step
-eps      0.000001	# stopping tolerance for pressure iteration
+itermax  300		# number of pressure iteration sweeps (fixed)
+eps      0.0		# stopping tolerance for pressure iteration (disabled)
 rho      0.99999		# relaxation parameter for SOR iteration
 omg      1.2		# relaxation parameter for SOR iteration
 
