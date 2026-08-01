@@ -1,0 +1,11 @@
+{
+  "providers": {
+    "gemmaselfhosted": {
+      "baseUrl": "http://10.0.0.1:30000/v1",
+      "api": "openai-completions",
+      "apiKey": "dummy",
+      "compat": { "supportsDeveloperRole": false, "supportsReasoningEffort": false },
+      "models": [ { "id": "google/gemma-4-31B-it", "contextWindow": 128000, "maxTokens": 32768 } ]
+    }
+  }
+}
