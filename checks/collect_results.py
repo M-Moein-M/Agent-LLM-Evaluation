@@ -99,9 +99,38 @@ def _gpu_of(eval_dir, cache):
                 found = gpu
                 break
         if found == "unknown":
-            found = _gpu_by_date(campaign)
+            found = _gpu_by_problem(campaign) or _gpu_by_date(campaign)
         cache[campaign] = found
     return cache[campaign]
+
+
+def _gpu_by_problem(campaign):
+    """Fall back to a device seen elsewhere under the same problem, IF unanimous.
+
+    Needed when EVERY round in a campaign failed before the measure phase, so
+    no gpu_info.txt exists anywhere in it — e.g. a campaign that hit a context
+    limit on every round. A problem that is genuinely CPU-only never has a
+    resolved GPU anywhere under traces/<problem>/, which the date-based
+    fallback below cannot express (it assumes everything after 2026-06-22 is
+    the A40 and would silently mislabel a CPU node as A40).
+
+    Requiring unanimity across every resolved round in the problem (not just
+    one sibling) is deliberate: a problem like RabbitCT-LolaOMP has campaigns
+    spanning both the GTX 1050 and A40 eras, so "some sibling resolved to X"
+    is not evidence for a campaign whose own era is unknown — only "every
+    sibling that ever resolved anything agrees" is. That keeps this function a
+    no-op for every existing GPU problem and only fires for a problem type
+    that has no GPU at all.
+    """
+    problem_dir = os.path.dirname(os.path.dirname(os.path.dirname(campaign)))
+    resolved = set()
+    for sibling in glob(os.path.join(problem_dir, "*", "*", "*", "round-*", ".eval")):
+        gpu = _gpu_of_round(sibling)
+        if gpu != "unknown":
+            resolved.add(gpu)
+    if len(resolved) == 1:
+        return next(iter(resolved))
+    return None
 
 
 # The two environments never overlapped in time: the GTX 1050 (Docker/WSL2) runs
