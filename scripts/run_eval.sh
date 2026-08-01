@@ -16,7 +16,7 @@ MODELS_CONFIG="${MODELS_CONFIG:-$ROOT/agents/apptainer/pi/models.json}"
 
 if [ -z "$EVAL_MODELS" ] && [ "$EVAL_AGENT" = "claude-pro" ]; then
   # claude-pro's models are real Anthropic ids, not gateway ids from models.json.
-  EVAL_MODELS="claude-opus-4-8"
+  EVAL_MODELS="claude-opus-5"
 fi
 
 if [ -z "$EVAL_MODELS" ]; then
@@ -135,9 +135,14 @@ if [[ ${#RABBIT_VARIANTS[@]} -gt 0 ]]; then
     "$ROOT/problems/RabbitCT-LolaBunny/download-input.sh" "$RABBIT_CANON"
   fi
   # Point each requested variant's data dir at the canonical copy (gitignored).
+  # ln -sfn + || true, not a bare `ln -s` under the `! -e` guard: several
+  # campaigns can now share one node (scripts/_run_merged_claude.slurm runs 3
+  # concurrent run_eval.sh), so the check-then-create is a TOCTOU race — all
+  # three see "missing", two lose the ln and die on `set -e`. -sfn makes it
+  # idempotent, and the guard stays to keep the log quiet in the common case.
   for _v in "${RABBIT_VARIANTS[@]}"; do
     if [[ "$_v" != "RabbitCT" && ! -e "$DATA_ROOT/$_v" ]]; then
-      ln -s RabbitCT "$DATA_ROOT/$_v"
+      ln -sfn RabbitCT "$DATA_ROOT/$_v" 2>/dev/null || true
       echo "Stage 1: linked data/$_v -> RabbitCT"
     fi
   done
