@@ -3,7 +3,7 @@
 #SBATCH --gres=gpu:a40:1
 #SBATCH --time=16:00:00
 #SBATCH --cpus-per-task=16
-#SBATCH --output=$WORK/nhr-agent-evaluation-remote/eval-%x-%j.out
+#SBATCH --output=eval-%x-%j.out
 #
 # One agent wave over the 4 graded problems x 10 rounds against the
 # moonshotai/Kimi-K2.7-Code endpoint. Per-agent vars (EVAL_AGENT, EVAL_MODELS)
@@ -14,7 +14,10 @@ set -euo pipefail
 
 module load apptainer 2>/dev/null || module load singularity 2>/dev/null || true
 
-cd $WORK/nhr-agent-evaluation-remote
+# Repo root = wherever this was submitted from. Hardcoding an absolute path
+# broke the moment the workspace moved off $WORK (invisible from the test
+# cluster); SLURM_SUBMIT_DIR follows the repo instead of pinning it.
+cd "$SLURM_SUBMIT_DIR"
 
 export CONTAINER_RUNTIME=apptainer
 export EVAL_PROVIDER=local

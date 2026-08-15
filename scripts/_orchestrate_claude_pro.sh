@@ -5,7 +5,7 @@
 # during the 2h sleeps instead of sitting idle.
 set -uo pipefail
 
-cd $WORK/nhr-agent-evaluation-remote
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 PROBLEMS=(RabbitCT-LolaBunny RabbitCT-LolaOMP tiled-gemm stream-compact)
 GAP=7200   # 2h between problems

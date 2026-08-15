@@ -3,7 +3,7 @@
 #SBATCH --gres=gpu:a40:1
 #SBATCH --time=06:00:00
 #SBATCH --cpus-per-task=16
-#SBATCH --output=$WORK/nhr-agent-evaluation-remote/eval-%x-%j.out
+#SBATCH --output=eval-%x-%j.out
 #
 # One graded problem, claude-pro agent (Claude Code on a personal subscription,
 # api.anthropic.com — NOT the gateway), 5 serial runs. The problem comes in
@@ -14,11 +14,14 @@ set -euo pipefail
 
 module load apptainer 2>/dev/null || module load singularity 2>/dev/null || true
 
-cd $WORK/nhr-agent-evaluation-remote
+# Repo root = wherever this was submitted from. Hardcoding an absolute path
+# broke the moment the workspace moved off $WORK (invisible from the test
+# cluster); SLURM_SUBMIT_DIR follows the repo instead of pinning it.
+cd "$SLURM_SUBMIT_DIR"
 
 export CONTAINER_RUNTIME=apptainer
 export EVAL_AGENT=claude-pro
-export EVAL_MODELS="${EVAL_MODELS:-claude-opus-4-8}"
+export EVAL_MODELS="${EVAL_MODELS:-claude-opus-5}"
 export EVAL_ROUNDS=5
 export EVAL_SOLVE_PAR=1
 export EVAL_PROBLEMS="${EVAL_PROBLEMS:?set EVAL_PROBLEMS via --export}"
