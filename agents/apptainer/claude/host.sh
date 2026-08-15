@@ -54,6 +54,14 @@ DATA_ROOT="${DATA_ROOT:-$ROOT/data}"
 # traces/ tree. Keyed off $TMPDIR so it's shared by every host.sh instance
 # packed into the same SLURM job, and harmless (single-process) otherwise.
 MEASURE_LOCK="${MEASURE_LOCK:-${TMPDIR:-/tmp}/agent-eval-measure.lock}"
+# Overrides the trace/workdir model folder name, which is otherwise derived from
+# the model id sent to the gateway. Needed when the gateway REUSES one id for a
+# new checkpoint (e.g. deepseek-ai/DeepSeek-V4-Flash silently became the -0731
+# build on 2026-08-10): the wire id must stay the served one, but its traces have
+# to land under a distinct name so the two checkpoints stay comparable instead of
+# being merged into one directory. Single-model runs ONLY — with several ids in
+# EVAL_MODELS they would all collapse into this one folder.
+EVAL_MODEL_TAG="${EVAL_MODEL_TAG:-}"
 
 DATE_TAG=$(date +%Y%m%d-%H%M%S)
 echo "ROOT directory was set to $ROOT"
@@ -113,7 +121,7 @@ done
 
 solve_job() {
     local MODEL="$1" ROUND="$2" PROBLEM_NAME="$3"
-    local MODEL_TAG="${MODEL//\//_}"
+    local MODEL_TAG="${EVAL_MODEL_TAG:-${MODEL//\//_}}"
     local PROBLEM="$PROBLEM_DIR/$PROBLEM_NAME"
     local WORK_DIR; WORK_DIR="$(job_workdir "$MODEL_TAG" "$ROUND" "$PROBLEM_NAME")"
     local CLAUDEHOME; CLAUDEHOME="$(job_home "$MODEL_TAG" "$ROUND" "$PROBLEM_NAME")"
@@ -156,7 +164,7 @@ solve_job() {
 
 measure_job() {
     local MODEL="$1" ROUND="$2" PROBLEM_NAME="$3"
-    local MODEL_TAG="${MODEL//\//_}"
+    local MODEL_TAG="${EVAL_MODEL_TAG:-${MODEL//\//_}}"
     local PROBLEM="$PROBLEM_DIR/$PROBLEM_NAME"
     local WORK_DIR;  WORK_DIR="$(job_workdir "$MODEL_TAG" "$ROUND" "$PROBLEM_NAME")"
     local CLAUDEHOME; CLAUDEHOME="$(job_home "$MODEL_TAG" "$ROUND" "$PROBLEM_NAME")"

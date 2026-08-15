@@ -28,6 +28,21 @@ EVAL_SOLVE_PAR="${EVAL_SOLVE_PAR:-4}"
 #   to block that, so anything needed inside must be forwarded explicitly.
 EVAL_PROVIDER="${EVAL_PROVIDER:-local}"
 DATA_ROOT="${DATA_ROOT:-$ROOT/data}"
+# Cross-process GPU serialization for Phase 2. Measure is already serial WITHIN
+# one host.sh run; this lock matters when multiple host.sh processes (e.g. a
+# different agent, or another model's wave) share one GPU inside the same SLURM
+# job — mirrors agents/apptainer/kimi/host.sh. Default path is per-job
+# ($TMPDIR), so unrelated jobs never contend; set MEASURE_LOCK explicitly to
+# share it across processes within one job (e.g. a merged kimi+swe-mini wave).
+MEASURE_LOCK="${MEASURE_LOCK:-${TMPDIR:-/tmp}/agent-eval-measure.lock}"
+# Overrides the trace/workdir model folder name, which is otherwise derived from
+# the model id sent to the gateway. Needed when the gateway REUSES one id for a
+# new checkpoint (e.g. deepseek-ai/DeepSeek-V4-Flash silently became the -0731
+# build on 2026-08-10): the wire id must stay the served one, but its traces have
+# to land under a distinct name so the two checkpoints stay comparable instead of
+# being merged into one directory. Single-model runs ONLY — with several ids in
+# EVAL_MODELS they would all collapse into this one folder.
+EVAL_MODEL_TAG="${EVAL_MODEL_TAG:-}"
 
 DATE_TAG=$(date +%Y%m%d-%H%M%S)
 echo "ROOT directory was set to $ROOT"
@@ -87,7 +102,7 @@ done
 
 solve_job() {
     local MODEL="$1" ROUND="$2" PROBLEM_NAME="$3"
-    local MODEL_TAG="${MODEL//\//_}"
+    local MODEL_TAG="${EVAL_MODEL_TAG:-${MODEL//\//_}}"
     local PROBLEM="$PROBLEM_DIR/$PROBLEM_NAME"
     local WORK_DIR; WORK_DIR="$(job_workdir "$MODEL_TAG" "$ROUND" "$PROBLEM_NAME")"
     local SWEHOME;  SWEHOME="$(job_home "$MODEL_TAG" "$ROUND" "$PROBLEM_NAME")"
@@ -128,7 +143,7 @@ solve_job() {
 
 measure_job() {
     local MODEL="$1" ROUND="$2" PROBLEM_NAME="$3"
-    local MODEL_TAG="${MODEL//\//_}"
+    local MODEL_TAG="${EVAL_MODEL_TAG:-${MODEL//\//_}}"
     local PROBLEM="$PROBLEM_DIR/$PROBLEM_NAME"
     local WORK_DIR;  WORK_DIR="$(job_workdir "$MODEL_TAG" "$ROUND" "$PROBLEM_NAME")"
     local SWEHOME;   SWEHOME="$(job_home "$MODEL_TAG" "$ROUND" "$PROBLEM_NAME")"
@@ -149,17 +164,20 @@ measure_job() {
         GRADE_BIND=(--bind "$ROOT/checks/$PROBLEM_NAME/bench.cu:/grade/bench.cu:ro")
     fi
 
-    apptainer exec --cleanenv "${NV_FLAG[@]}" \
-        --env "EVAL_AGENT=$AGENT" \
-        --env "EVAL_MODEL=$MODEL" \
-        --env "EVAL_ROUND=$ROUND" \
-        --env "EVAL_SIZE=$EVAL_SIZE" \
-        --env "EVAL_VARIANT=$EVAL_VARIANT" \
-        --bind "$WORK_DIR:/problem" \
-        --bind "$MEASURE_SCRIPT:/measure.sh:ro" \
-        "${DATA_BIND[@]}" \
-        "${GRADE_BIND[@]}" \
-        "$AGENT_SIF" /bin/bash -l /measure.sh /problem
+    (
+        flock -x 200
+        apptainer exec --cleanenv "${NV_FLAG[@]}" \
+            --env "EVAL_AGENT=$AGENT" \
+            --env "EVAL_MODEL=$MODEL" \
+            --env "EVAL_ROUND=$ROUND" \
+            --env "EVAL_SIZE=$EVAL_SIZE" \
+            --env "EVAL_VARIANT=$EVAL_VARIANT" \
+            --bind "$WORK_DIR:/problem" \
+            --bind "$MEASURE_SCRIPT:/measure.sh:ro" \
+            "${DATA_BIND[@]}" \
+            "${GRADE_BIND[@]}" \
+            "$AGENT_SIF" /bin/bash -l /measure.sh /problem
+    ) 200>"$MEASURE_LOCK"
 
     mkdir -p "$TRACE_DIR"
     rsync -a --prune-empty-dirs --compare-dest="$PROBLEM/" "$WORK_DIR/" "$TRACE_DIR/"

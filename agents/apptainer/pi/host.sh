@@ -42,6 +42,21 @@ EVAL_SOLVE_PAR="${EVAL_SOLVE_PAR:-4}"
 # the container and consumed by solve.sh.
 EVAL_STEP_LIMIT="${EVAL_STEP_LIMIT:-120}"
 DATA_ROOT="${DATA_ROOT:-$ROOT/data}"
+# Cross-process GPU serialization for Phase 2. Measure is already serial WITHIN
+# one host.sh run; this lock matters when multiple host.sh processes (e.g. a
+# different agent, or another model's wave) share one GPU inside the same SLURM
+# job — mirrors agents/apptainer/claude/host.sh. Default path is per-job
+# ($TMPDIR), so unrelated jobs never contend; set MEASURE_LOCK explicitly to
+# share it across processes within one job (e.g. a merged kimi+pi wave).
+MEASURE_LOCK="${MEASURE_LOCK:-${TMPDIR:-/tmp}/agent-eval-measure.lock}"
+# Overrides the trace/workdir model folder name, which is otherwise derived from
+# the model id sent to the gateway. Needed when the gateway REUSES one id for a
+# new checkpoint (e.g. deepseek-ai/DeepSeek-V4-Flash silently became the -0731
+# build on 2026-08-10): the wire id must stay the served one, but its traces have
+# to land under a distinct name so the two checkpoints stay comparable instead of
+# being merged into one directory. Single-model runs ONLY — with several ids in
+# EVAL_MODELS they would all collapse into this one folder.
+EVAL_MODEL_TAG="${EVAL_MODEL_TAG:-}"
 
 DATE_TAG=$(date +%Y%m%d-%H%M%S)
 echo "ROOT directory was set to $ROOT"
@@ -110,7 +125,7 @@ done
 # ---------------------------------------------------------------------------
 solve_job() {
     local MODEL="$1" ROUND="$2" PROBLEM_NAME="$3"
-    local MODEL_TAG="${MODEL//\//_}"
+    local MODEL_TAG="${EVAL_MODEL_TAG:-${MODEL//\//_}}"
     local PROBLEM="$PROBLEM_DIR/$PROBLEM_NAME"
     local WORK_DIR; WORK_DIR="$(job_workdir "$MODEL_TAG" "$ROUND" "$PROBLEM_NAME")"
     local PIHOME;   PIHOME="$(job_home "$MODEL_TAG" "$ROUND" "$PROBLEM_NAME")"
@@ -157,7 +172,7 @@ solve_job() {
 # ---------------------------------------------------------------------------
 measure_job() {
     local MODEL="$1" ROUND="$2" PROBLEM_NAME="$3"
-    local MODEL_TAG="${MODEL//\//_}"
+    local MODEL_TAG="${EVAL_MODEL_TAG:-${MODEL//\//_}}"
     local PROBLEM="$PROBLEM_DIR/$PROBLEM_NAME"
     local WORK_DIR;  WORK_DIR="$(job_workdir "$MODEL_TAG" "$ROUND" "$PROBLEM_NAME")"
     local PIHOME;    PIHOME="$(job_home "$MODEL_TAG" "$ROUND" "$PROBLEM_NAME")"
@@ -178,17 +193,20 @@ measure_job() {
         GRADE_BIND=(--bind "$ROOT/checks/$PROBLEM_NAME/bench.cu:/grade/bench.cu:ro")
     fi
 
-    apptainer exec --cleanenv "${NV_FLAG[@]}" \
-        --env "EVAL_AGENT=$AGENT" \
-        --env "EVAL_MODEL=$MODEL" \
-        --env "EVAL_ROUND=$ROUND" \
-        --env "EVAL_SIZE=$EVAL_SIZE" \
-        --env "EVAL_VARIANT=$EVAL_VARIANT" \
-        --bind "$WORK_DIR:/problem" \
-        --bind "$MEASURE_SCRIPT:/measure.sh:ro" \
-        "${DATA_BIND[@]}" \
-        "${GRADE_BIND[@]}" \
-        "$AGENT_SIF" /bin/bash -l /measure.sh /problem
+    (
+        flock -x 200
+        apptainer exec --cleanenv "${NV_FLAG[@]}" \
+            --env "EVAL_AGENT=$AGENT" \
+            --env "EVAL_MODEL=$MODEL" \
+            --env "EVAL_ROUND=$ROUND" \
+            --env "EVAL_SIZE=$EVAL_SIZE" \
+            --env "EVAL_VARIANT=$EVAL_VARIANT" \
+            --bind "$WORK_DIR:/problem" \
+            --bind "$MEASURE_SCRIPT:/measure.sh:ro" \
+            "${DATA_BIND[@]}" \
+            "${GRADE_BIND[@]}" \
+            "$AGENT_SIF" /bin/bash -l /measure.sh /problem
+    ) 200>"$MEASURE_LOCK"
 
     # Host-side trace extraction (no container needed — Apptainer wrote everything
     # as you on a coherent FS). --compare-dest keeps only files the agent changed
@@ -228,8 +246,11 @@ done
 
 # Host-side pass judgment (no GPU, re-runnable).
 if command -v python3 >/dev/null 2>&1; then
-    python3 "$ROOT/checks/check_pass.py" --traces "$TRACE_ROOT"
-    python3 "$ROOT/checks/trace_stats.py" --traces "$TRACE_ROOT"
+    (
+        flock -x 200
+        python3 "$ROOT/checks/check_pass.py" --traces "$TRACE_ROOT"
+        python3 "$ROOT/checks/trace_stats.py" --traces "$TRACE_ROOT"
+    ) 200>"$MEASURE_LOCK"
 else
     echo "WARN: python3 not found on host — skipping pass checks. Run checks/check_pass.py + trace_stats.py manually." >&2
 fi
