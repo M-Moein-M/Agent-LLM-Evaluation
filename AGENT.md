@@ -267,6 +267,14 @@ every test-cluster node probed so far — wall-clock only, no likwid/`perf stat`
 
 ### pi: two phases with opposite GPU needs
 
+- **Image build.** `agents/apptainer/pi/agent.def` builds the local pi fork
+  (adds `--step-limit`) FROM SOURCE inside the container at `apptainer build`
+  time — `%post` runs `npm ci` + per-package `npm run build` + `npm pack` for
+  all four `@earendil-works/pi-*` packages, then a single `npm install -g` of
+  the resulting tarballs (must be one call so the cross-package deps resolve
+  to each other locally, not the public registry). No `pi-dist/*.tgz` are
+  committed anymore; the build needs outbound network access (npm registry +
+  pi-ai's model-list fetch), so it must run from a node that has it.
 - **Phase 1 — SOLVE (parallel, shared GPU).** Up to `EVAL_SOLVE_PAR` (default 4)
   `solve.sh` containers run at once. The agent's own compile/run iterations only
   need *correctness* feedback and mostly wait on the LLM gateway, so GPU
@@ -339,6 +347,44 @@ context exhaustion — the analog of the others running out of steps — rather 
 silently summarizing to continue. The modest 64K cap keeps that wall from being
 hit prematurely by an oversized reservation.
 
+### `-think` model ids vs the bare id (self-hosted DeepSeek-V4-Flash-0731)
+
+`deepseek-ai/DeepSeek-V4-Flash-0731-think` and `deepseek-ai/DeepSeek-V4-Flash-0731`
+are **the same weights on the same sglang backend**. They differ only in the
+LiteLLM deployment in front of it:
+
+| | bare id | `-think` id |
+|---|---|---|
+| server-side reasoning | off (LiteLLM default) | on, via `extra_body.chat_template_kwargs.thinking: true` |
+| where reasoning arrives | separate `reasoning_content` field | folded into `content` as `<think>…</think>` (`merge_reasoning_content_in_choices: true`) |
+| `model_info.supports_reasoning` | — | `false`, to keep LiteLLM off the `/v1/responses` bridge |
+| used by | kimi, swe-mini, pi | claude only |
+
+**Why the split.** The OpenAI-compat harnesses (kimi, swe-mini, pi) want the clean
+`reasoning_content` split and read it fine, so they take the bare id. Claude Code
+speaks Anthropic `/v1/messages`, and LiteLLM's Anthropic SSE adapter emits
+malformed thinking blocks for a reasoning model — Claude Code dies on turn 1 with
+*"Content block is not a thinking block"*. Merging the reasoning into `content`
+means no thinking block is ever emitted, so the alias is a **transport
+workaround**, not a different model or a different amount of reasoning. Full
+LiteLLM config details in the `-think` deployment: see the three keys documented
+in `models.yaml` (the third, `supports_reasoning: false`, is the non-obvious one —
+without it the request gets re-routed to `/v1/responses`, which sglang does not
+serve).
+
+**Consequences for results.** Because the checkpoint is identical, the runner sets
+`EVAL_MODEL_TAG=deepseek-ai_DeepSeek-V4-Flash-0731` so all four agents' traces
+land under one folder. `facts.json` still records the **wire** id, so the
+`-think` runs would otherwise appear as a separate model row; `slides/make_figures.py`
+canonicalizes `DeepSeek-V4-Flash-0731-think` → `DeepSeek-V4-Flash-0731` in the
+`ROWS_LATEST` builder for exactly this reason. Per-model aggregation must never be
+split by the alias.
+
+**On the hub there is no `-think` alias** (the hub serves the 0731 weights
+under the bare tag `deepseek-ai/DeepSeek-V4-Flash`; the `-0731` id itself 403s).
+Claude against the hub therefore needs `EVAL_MAX_THINKING_TOKENS=0` to survive
+turn 1 — see `scripts/_run_agent_dsflash0731.slurm`, mode `hub`.
+
 ### kimi: openai-compat, env-config, config.toml step-cap
 
 Kimi Code (Moonshot's terminal agent) is the simplest of the harnesses to wire up,
@@ -371,10 +417,17 @@ Anthropic-protocol baggage applies:
   single turn, so this bounds the whole agentic loop — parity with swe-mini's
   `step_limit` and claude's `--max-turns`. Exceeding it raises
   `LOOP_MAX_STEPS_EXCEEDED` (the analog of running out of steps).
-- **No compaction caveat needed.** Unlike claude (where `DISABLE_AUTO_COMPACT=1` is
-  set for fairness), Kimi's `micro_compaction` is on by default; if cross-agent
-  fairness later demands it be disabled, set
-  `KIMI_CODE_EXPERIMENTAL_MICRO_COMPACTION=false`.
+- **Compaction is disabled for fairness** (since 2026-08-10). Kimi's
+  `micro_compaction` is ON by default, which silently summarizes older turns as
+  history nears the context limit and lets a run continue where pi/swe-mini —
+  which have no compaction — simply die. Job 3973505 made the asymmetry concrete:
+  swe-mini hit `Input length (216093 tokens) exceeds the maximum allowed length`
+  **11 times** (one propagating as an unhandled `OpenAIError` that killed the run)
+  against **zero** for kimi on the same model and problems. `solve.sh` now exports
+  `KIMI_CODE_EXPERIMENTAL_MICRO_COMPACTION=false`, matching claude's
+  `DISABLE_AUTO_COMPACT=1` policy, so context exhaustion is a real failure — the
+  analog of running out of steps — for every agent. `EVAL_KIMI_COMPACTION=1`
+  restores the CLI default.
 - **Install / HOME.** The native installer goes to `/usr/local/bin/kimi`
   (`KIMI_INSTALL_DIR=/usr/local`), so — unlike claude's `/root/.local` binary — the
   per-job staging `--home` can't shadow it. Each job still gets its own HOME so the
@@ -467,19 +520,23 @@ anchor the open-weight results against a known-strong reference.
   `EVAL_*` knob, forward it there too or it silently reads as unset inside.
 - Phase 1 mirrors `claude/`; Phase 2 reuses `agents/measure.sh`.
 
-### Packing multiple campaigns onto one GPU (claude only)
+### Packing multiple campaigns onto one GPU
 
-A wave script can run 2-3 whole `claude` campaigns (different models/providers)
+A wave script can run 2-3 whole agent campaigns (different agents/models/providers)
 as background jobs inside ONE SLURM allocation instead of one GPU reservation
 per campaign — Phase 1 (solve) is already GPU-contention-tolerant (see the pi
-rationale above; claude shares it), so the only thing packing threatens is
-Phase 2 (measure), where wall-clock IS the score. `agents/apptainer/claude/host.sh`
-guards this with a `flock` (`MEASURE_LOCK`, keyed off `$TMPDIR`) around both the
-measure step and the trailing `check_pass.py`/`trace_stats.py` regen, so
-concurrent `host.sh` instances packed into the same job still serialize exactly
-where isolation matters. Set env vars with plain `export` inside a packing
-script, not `sbatch --export=...` — `--export` splits on every comma, which
-silently truncates a comma-separated `EVAL_PROBLEMS` to its first entry.
+rationale above; every agent shares it), so the only thing packing threatens is
+Phase 2 (measure), where wall-clock IS the score. Every apptainer `host.sh`
+(`claude`, `pi`, `swe-mini`) guards this with a `flock` (`MEASURE_LOCK`, keyed
+off `$TMPDIR`) around both the measure step and the trailing
+`check_pass.py`/`trace_stats.py` regen, so concurrent `host.sh` instances —
+even different agents — packed into the same job still serialize exactly
+where isolation matters. Set `MEASURE_LOCK` to the same path across a mixed
+wave (e.g. a merged kimi+pi run) to share one lock; leave it at the per-job
+`$TMPDIR` default when campaigns don't need to cross-serialize. Set env vars
+with plain `export` inside a packing script, not `sbatch --export=...` —
+`--export` splits on every comma, which silently truncates a comma-separated
+`EVAL_PROBLEMS` to its first entry.
 
 ### The solution.json contract
 
@@ -869,3 +926,171 @@ touching ACLs. mtime matters beyond the noise: `measure_job`'s
 `rsync --compare-dest` decides "did the agent modify this file?" from
 size+mtime, so a copy that reset mtimes would flag every untouched file as
 agent-modified.
+
+**10. kimi-code crash-loops on Kimi-K2.x's own `</think>`-omission bug; claude
+and swe-mini don't, for unrelated client-side reasons — don't mistake either
+outcome for a harness bug.** Root cause is **model-level**, confirmed across
+three independent serving stacks (sglang, vLLM, Azure AI Foundry — including a
+report on kimi-code's own tracker, `MoonshotAI/kimi-code#520`): the Kimi K2.x
+checkpoint intermittently fails to emit its closing `</think>` token, worst on
+the turn right after a tool call. Nothing server-side is broken; the model
+occasionally just doesn't close its own thinking block.
+
+What that does to each harness depends entirely on how sglang's
+`--reasoning-parser` interacts with the missing tag, and how tolerant each
+client is of the result:
+
+- **sglang's reasoning-parser has no fallback for a missing `</think>`.** It
+  dumps the *entire* raw generation into `reasoning_content` and hands the
+  tool-call-parser an empty `text`. The tool-call-parser then finds nothing,
+  so the final response is `content=""` + `tool_calls=[]` — thinking is
+  present, actionable output is not (`adapter.py`'s reasoning-parser runs
+  *before* the tool-call-parser and unconditionally overwrites `text`).
+- **kimi-code's client explicitly checks for "text or tool_calls, else fail."**
+  Hitting the empty case above raises a hard `provider.api_error`
+  (`APIEmptyResponseError`) after retries — one bad turn kills the whole run.
+  Confirmed via a real (non-simulated) smoke run against
+  `10.0.0.1:30000` with `--reasoning-parser` dropped: crash disappears
+  (raw reasoning merges verbatim into `content`, literal `</think>` shows up
+  as plain text), but the model can still return a near-empty turn
+  (`content: "</think>"`) — a milder, unfixable-by-config residual.
+- **claude (Anthropic-protocol, via the litellm-based gateway) doesn't
+  crash on this**, not because it avoids the sglang bug (it doesn't — same
+  bug, same backend), but because **no fail-fast check exists anywhere in the
+  litellm→claude-code path.** litellm passes the (already-empty) OpenAI
+  response through as a thin/near-empty Anthropic turn; claude-code's own
+  turn loop doesn't treat that as fatal either. Confirmed on a real 40-job
+  production run (`claude` + `moonshotai/Kimi-K2.7-Code`, 20/40 pass): zero
+  matches for `APIEmptyResponseError`/`thinking content`/`retry` in the full
+  console log, `agent.stderr.log` empty for a sampled FAIL round, and that
+  round ran its full tool-call sequence before ending on `error_max_turns`
+  (turn-budget exhaustion), not an API error. All 20 FAILs are genuine
+  build/mse/run failures, not this bug.
+- **swe-mini (mini-swe-agent + litellm, direct OpenAI-compat) also doesn't
+  crash, via yet another path — and it's the only harness of the four that
+  recovers instead of merely not-crashing.** A turn with no tool calls is a
+  *recoverable format error*, never a completion signal. See Gotcha 11 for the
+  full mechanism and source citations; this is the single biggest design
+  difference between swe-mini and kimi-code. (Earlier revisions of this note
+  said mini parses actions out of response *text* (a bash code block). That is
+  the `mini_textbased.yaml` / `litellm_textbased_model` path — **not** what our
+  runs use. `host.sh` binds `mini.yaml`, which is the structured-`tool_calls`
+  path via `litellm_model`. The tolerance conclusion holds either way, but for
+  a different reason than originally written.)
+- **pi doesn't crash either — but do NOT read that as "pi recovers."**
+  `agents/apptainer/pi/pi-edited/packages/ai/src/api/openai-completions.ts:1006-1016`
+  explicitly skips assistant turns with no `content` and no `tool_calls` when
+  building the next request — comment: *"This handles aborted assistant
+  responses that got no content."* That prevents an API-request *serialization*
+  crash; it does not keep the agent working. pi's loop
+  (`packages/agent/src/agent-loop.ts:172`) is
+  `while (hasMoreToolCalls || pendingMessages.length > 0)`, and a turn with zero
+  tool calls sets `hasMoreToolCalls = false` — so pi exits the loop and ends the
+  session on a degenerate turn, structurally the same as kimi-code. Confirmed by
+  reading the vendored source, not inferred.
+
+**Net: this is a two-layer problem, and only one layer has a server-side
+fix.** Dropping `--reasoning-parser kimi_k2` fixes layer 1 (sglang no longer
+force-empties `content` when `</think>` is missing) — necessary for everyone.
+Layer 2 is client-side tolerance of a still-possible degenerate turn (the
+model can independently emit near-empty output regardless of the parser
+config): pi and swe-mini already tolerate it by design, claude/litellm never
+validates for it, but **kimi-code has a hard "text or tool_calls, else fail"
+check baked into its own client with no server-side override.** So: pi runs
+clean with the parser dropped; kimi-code does not — there is no serving-stack
+setting that patches a client-side design decision. Fixing kimi-code would
+require a change in kimi-code itself (or a proxy that filters/retries
+degenerate responses before kimi-code's own SDK sees them), not a sglang flag.
+
+**Layer 3 exists too, and patching layer 2 exposes it — see Gotcha 11.** Making
+kimi-code stop *crashing* on a degenerate turn does not make it *finish the
+task*: it then accepts the degenerate turn as a finished answer and exits 0 with
+no work done. Only swe-mini survives layer 3.
+
+**Checked: kimi-code 0.34.0 does NOT fix this (0.31.0 is what `agents/apptainer/kimi/`
+builds; 0.34.0 built separately at `agents/apptainer/kimi-034/agent.sif`, confirmed
+via `kimi --version`).** Cloned `MoonshotAI/kimi-code` to a scratch dir and diffed
+`@moonshot-ai/kimi-code@0.31.0` against `@moonshot-ai/kimi-code@0.34.0` (92 commits,
+2357 files changed repo-wide, so the diff tooling is confirmed working):
+- `packages/kosong/src/generate.ts` and `errors.ts` — the actual throw-site for
+  `APIEmptyResponseError` (both the fully-empty and thinking-only checks) — are
+  **byte-for-byte unchanged**. Zero diff.
+- `packages/agent-core-v2/src/kosong/{contract,protocol}/errors.ts` did change, but
+  it's a pure refactor (error classes made "born-coded" — each computes its own wire
+  code at construction instead of a central switch in `translateProviderError`).
+  Classification is identical before/after: `APIEmptyResponseError` still maps to
+  `provider.api_error` (or `provider.filtered` iff `finishReason === 'filtered'`),
+  and that code is still absent from the protocol-level `retryable` list in both
+  versions. The `isRetryableGenerateError(APIEmptyResponseError) === true` test
+  assertion (agent-core-v2 llmRequester layer) is also identical in both versions —
+  so kimi-code already retries this error internally today, and 0.34.0 changes
+  nothing about the retry count, backoff, or classification.
+- `CHANGELOG.md` across `kimi-code`/`kosong`/`agent-core`/`agent-core-v2` for the
+  92-commit range: no entry mentions empty-response, thinking-only, or
+  reasoning-parsing fixes. Only tangential retry-adjacent entries are a kimi-web UI
+  cosmetic change (shows "attempt N of M" during automatic retries) and an unrelated
+  compaction token-counting fix.
+
+Conclusion: no version bump alone fixes this — the hard "text or tool_calls, else
+fail" check is unchanged in the CLI's newest release, so the only mitigations remain
+the ones above (drop `--reasoning-parser`, and/or don't run kimi-code against
+Kimi-K2.x until Moonshot patches the client itself).
+
+**11. How a harness decides "the agent is done" is a real capability
+difference, and swe-mini is the only one of the four that gets it right.**
+This is the deepest of the harness differences and it is *independent of the
+Kimi bug* — Gotcha 10 is just the cleanest way to observe it. Two designs:
+
+- **Completion by absence (kimi-code, pi, claude).** A turn with no tool calls
+  IS the completion signal. The loop cannot distinguish "the model is genuinely
+  finished" from "the model emitted garbage" — both look identical: text
+  present, `tool_calls` empty. kimi-code:
+  `packages/agent-core-v2/src/agent/loop/loopService.ts`. pi:
+  `packages/agent/src/agent-loop.ts:172` (`while (hasMoreToolCalls || ...)`).
+- **Completion by explicit positive signal (swe-mini).** Nothing implicit ever
+  ends a run. Verified in the installed source inside
+  `agents/apptainer/swe-mini/agent.sif` (mini-swe-agent 2.4.4):
+  - No tool calls → `FormatError`, not completion:
+    `minisweagent/models/utils/actions_toolcall.py:40` — *"No tool calls found
+    in the response. Every response MUST include at least one tool call."*
+    `DefaultAgent.run` (`agents/default.py`) catches it, appends the corrective
+    message via `format_error_template`, and keeps looping.
+  - The ONLY way to finish is the sentinel, and it is checked **in the
+    environment, on the executed command's stdout** — not in the model's prose:
+    `minisweagent/environments/local.py:_check_finished` raises `Submitted` iff
+    the first line of output is `COMPLETE_TASK_AND_SUBMIT_FINAL_OUTPUT` AND
+    `returncode == 0`. The model must actually *run* the echo; writing the
+    string in its reply does nothing. (Same check in `docker.py`,
+    `singularity.py`, `bubblewrap.py`, etc.)
+  - It does not spin forever: `max_consecutive_format_errors: 3` (AgentConfig
+    default; our `mini.yaml` does not override) exits with a distinguishable
+    `RepeatedFormatError` status, and the counter resets after any clean step
+    (`self.n_consecutive_format_errors = 0`). Plus `step_limit: 120`,
+    `cost_limit`, `wall_time_limit_seconds`.
+
+**Why it matters — measured, not theoretical.** Against a self-hosted
+`moonshotai/Kimi-K2.7-Code` (cluster multi-node sglang, `10.0.0.1:30000`), the
+patched `kimi-edited` image on `problems/2D-seq`, 4 parallel rounds: **4/4
+identical silent no-ops.** Each round did one big parallel-`Read` batch, then
+returned a turn whose entire `content` was the literal leaked string
+`"</think>"` with no tool calls. kimi-code took that as the final answer and
+ended the session — `exit=0`, `agent.stderr.log` **0 bytes**, no
+`solution.json`, no edit, no build. A grader keying on exit status or stderr
+sees a clean run. (Note this turn has `hasText=true`, so it bypasses the
+Gotcha-10 `hasThink && !hasText` guard entirely — the layer-2 patch is inert
+here. This is layer 3.)
+
+Under swe-mini's design the same model output would have produced a corrective
+message and three more attempts, then exited `RepeatedFormatError` — a visible,
+attributable failure instead of a fake pass.
+
+**Consequences for this eval:**
+- **Do not compare pass rates across harnesses without checking exit reasons.**
+  Completion-by-absence harnesses can convert a model failure into a silent
+  `exit=0` no-op. Cross-check that `solution.json` exists and the workdir was
+  actually modified; `exit=0` + empty stderr is NOT evidence of a real attempt.
+- If kimi-code is to be fixed properly, the port is swe-mini's contract, not a
+  Kimi-specific text filter: *absence of a tool call is a recoverable format
+  error; completion requires an explicit positive signal; cap consecutive
+  failures and exit with a distinct status.* That is a change to shared loop
+  semantics in `loopService.ts` affecting every model — scope it deliberately.
