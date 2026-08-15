@@ -10,16 +10,33 @@ From: nvidia/cuda:12.4.1-devel-ubuntu22.04
 #   APPTAINER_CACHEDIR=$TMPDIR/apptainer-cache \
 #   apptainer build --fakeroot agents/apptainer/pi/agent.sif agents/apptainer/pi/agent.def
 #
-# NOTE: this image installs a LOCAL FORK of pi (adds the `--step-limit` CLI flag)
-# from prebuilt tarballs in agents/apptainer/pi/pi-edited/pi-dist/, NOT the public
-# @mariozechner/pi-coding-agent package. Rebuild those tarballs per the FORK NOTE
-# at the top of agents/apptainer/pi/pi-edited/README.md before building this image.
+# NOTE: this image installs a LOCAL FORK of pi (adds the `--step-limit` CLI flag),
+# NOT the public @mariozechner/pi-coding-agent package. The fork is built from
+# source INSIDE this container (%post below runs the pack/install steps from
+# pi-edited/README.md's FORK NOTE) — the cluster's build/login nodes have no
+# npm, so no prebuilt pi-dist/*.tgz are needed or checked in anymore. The
+# build step needs network access (npm registry + pi-ai's model-list fetch).
 # %files paths are relative to the build CWD, so build from the repo root.
 
 %files
-    agents/apptainer/pi/pi-edited/pi-dist /opt/pi-dist
+    agents/apptainer/pi/pi-edited/package.json /opt/pi-src/package.json
+    agents/apptainer/pi/pi-edited/package-lock.json /opt/pi-src/package-lock.json
+    agents/apptainer/pi/pi-edited/.npmrc /opt/pi-src/.npmrc
+    agents/apptainer/pi/pi-edited/tsconfig.json /opt/pi-src/tsconfig.json
+    agents/apptainer/pi/pi-edited/tsconfig.base.json /opt/pi-src/tsconfig.base.json
+    agents/apptainer/pi/pi-edited/biome.json /opt/pi-src/biome.json
+    agents/apptainer/pi/pi-edited/packages /opt/pi-src/packages
 
 %post
+    echo "############################################################"
+    echo "#                                                          #"
+    echo "#   THIS BUILD NEEDS INTERNET ACCESS.                      #"
+    echo "#   apt-get, npm install/ci, and pi-ai's model-list fetch  #"
+    echo "#   all reach out during %post. Run from a node with       #"
+    echo "#   outbound network, or this build will fail partway.     #"
+    echo "#                                                          #"
+    echo "############################################################"
+
     apt-get update -y && apt-get install -y --no-install-recommends \
         git \
         curl \
@@ -40,16 +57,23 @@ From: nvidia/cuda:12.4.1-devel-ubuntu22.04
     apt-get update -y && apt-get install -y --no-install-recommends nodejs \
         && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-    # Install the local pi fork from prebuilt tarballs. All four packages MUST go
-    # in a single `npm install` so the cross-package deps (@earendil-works/pi-*)
-    # resolve to these local builds instead of the public registry. The binary is
-    # still named `pi`, so host.sh/solve.sh need no change.
-    npm install -g \
-        /opt/pi-dist/earendil-works-pi-ai-*.tgz \
-        /opt/pi-dist/earendil-works-pi-agent-core-*.tgz \
-        /opt/pi-dist/earendil-works-pi-tui-*.tgz \
-        /opt/pi-dist/earendil-works-pi-coding-agent-*.tgz
-    rm -rf /opt/pi-dist
+    # Build the local pi fork from source (FORK NOTE steps from
+    # pi-edited/README.md), then install all four packed tarballs in a single
+    # `npm install` so the cross-package deps (@earendil-works/pi-*) resolve to
+    # these local builds instead of the public registry. The binary is still
+    # named `pi`, so host.sh/solve.sh need no change.
+    cd /opt/pi-src
+    npm ci --ignore-scripts
+    for p in ai tui agent coding-agent; do
+        npm run build --workspace="$(node -p "require('./packages/$p/package.json').name")"
+    done
+    mkdir -p /opt/pi-dist
+    for p in ai tui agent coding-agent; do
+        (cd packages/$p && npm pack --pack-destination /opt/pi-dist)
+    done
+    npm install -g /opt/pi-dist/earendil-works-pi-*.tgz
+    cd /
+    rm -rf /opt/pi-src /opt/pi-dist
 
     # Nsight Systems CLI (nsys) for trustworthy external kernel timing in the
     # perf-grading path. The CUDA base repo does NOT carry the standalone CLI, so
