@@ -5,8 +5,8 @@ Walks the trace tree and, for every round (a dir holding ``.eval/facts.json``),
 parses the agent's raw event/trajectory file that sits NEXT TO ``.eval/`` and
 writes ``.eval/stats.json``.
 
-Three agent formats are supported, all of which record per-model-call token
-usage (so the same metrics come out the other side):
+Four agent formats are supported. The first three record per-model-call token
+usage (so the same metrics come out the other side); kimi does not — see below.
 
   * **pi**  → ``agent.jsonl`` (one JSON event per line). Assistant turns are
     ``message_end`` events whose ``message.role == "assistant"``; the per-call
@@ -21,6 +21,25 @@ usage (so the same metrics come out the other side):
     (``input_tokens`` + ``cache_read_input_tokens`` + ``cache_creation_input_tokens``
     is the effective prompt context, ``output_tokens`` the completion). Tool
     actions are ``tool_use`` content blocks inside those assistant messages.
+  * **kimi** → ``agent.stream.jsonl`` TOO (Kimi Code CLI). Same filename as
+    claude but a different schema: flat chat messages carrying a top-level
+    ``role`` (``assistant`` / ``tool`` / ``meta``) and NO ``message`` wrapper.
+    One ``assistant`` line == one model call; ``tool`` lines are tool results.
+    Because the filename collides, the two are told apart by sniffing content
+    (``_sniff_stream_agent``), never by name — dispatching on the name alone is
+    what previously mislabelled every kimi round as ``agent: "claude"`` and
+    reported 0 turns / 0 tokens for it.
+
+    Kimi Code emits NO token usage anywhere in this stream, so ``total_input`` /
+    ``total_output`` / ``total_tokens`` / ``peak_context`` are reported as
+    ``None`` (unmeasurable), NOT 0 — a real 0 would silently drag wave averages
+    down, whereas ``None`` is filtered out by the ``_mean`` helpers in
+    collect_results.py / report_html.py and shows as blank. Recovering kimi
+    token counts needs a harness change (the CLI would have to be made to log
+    per-call usage); it cannot be back-filled from existing traces. For the same
+    reason kimi compaction cannot be detected: with no context series there is
+    nothing to spot a drop in, so ``compacted`` is always False for kimi and
+    should be read as "unknown", not "confirmed no compaction".
 
 Definitions, kept identical across agents so models are comparable:
 
@@ -68,8 +87,16 @@ def _compaction_points(context_series: list[int]) -> list[int]:
 
 
 def _finish(agent, source, total_input, total_output, total_tokens,
-            turns, steps, context_series) -> dict:
+            turns, steps, context_series, usage_available=True) -> dict:
+    """Assemble a stats dict. ``usage_available=False`` marks an agent whose
+    trace carries no token usage at all (kimi): the token and context fields
+    then come out as ``None`` rather than a misleading 0."""
     points = _compaction_points(context_series)
+    if not usage_available:
+        total_input = total_output = total_tokens = None
+        peak_context = None
+    else:
+        peak_context = max(context_series) if context_series else 0
     return {
         "agent": agent,
         "source": source,
@@ -78,7 +105,7 @@ def _finish(agent, source, total_input, total_output, total_tokens,
         "total_tokens": total_tokens,
         "turns": turns,
         "steps": steps,
-        "peak_context": max(context_series) if context_series else 0,
+        "peak_context": peak_context,
         "compacted": bool(points),
         "compaction_points": points,
     }
@@ -199,6 +226,78 @@ def parse_claude(path: Path) -> dict:
                    turns, steps, context_series)
 
 
+def parse_kimi(path: Path) -> dict:
+    """Parse a Kimi Code CLI ``agent.stream.jsonl``.
+
+    Flat chat messages, one per line, discriminated by a top-level ``role``:
+
+      * ``assistant`` — one model call (may carry ``content``, ``tool_calls``,
+        or both). Counted as a turn. Kimi emits ONE line per response, not one
+        per content block as Claude Code does, so no message-id dedup is needed.
+      * ``tool``      — one tool result. Counted as a step, matching swe-mini
+        (steps are executions that came back, not calls that were requested; an
+        assistant line may request several at once).
+      * ``meta``      — session banner and API retry records. Neither a turn nor
+        a step.
+
+    No usage anywhere in the format, hence ``usage_available=False``.
+    """
+    turns = steps = 0
+    with open(path, "r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                ev = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            role = ev.get("role")
+            if role == "assistant":
+                turns += 1
+            elif role == "tool":
+                steps += 1
+    return _finish("kimi", path.name, 0, 0, 0, turns, steps, [],
+                   usage_available=False)
+
+
+# Top-level "type" values that only Claude Code's stream-json emits.
+_CLAUDE_EVENT_TYPES = {"assistant", "user", "result", "system"}
+# Top-level "role" values that only the Kimi Code CLI stream emits.
+_KIMI_ROLES = {"assistant", "tool", "meta"}
+
+
+def _sniff_stream_agent(path: Path, max_lines: int = 40) -> str:
+    """Return "kimi" or "claude" for an ``agent.stream.jsonl``.
+
+    Both agents write that same filename, so the format has to be identified by
+    shape. Claude Code events wrap the payload: a top-level ``type`` drawn from
+    _CLAUDE_EVENT_TYPES plus a ``message`` object. Kimi lines are bare chat
+    messages: a top-level ``role``, no ``message`` key. Only the first few lines
+    are read; ties fall back to claude, preserving the old behaviour for any
+    stream this misses.
+    """
+    with open(path, "r", encoding="utf-8") as fh:
+        for _ in range(max_lines):
+            line = fh.readline()
+            if not line:
+                break
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                ev = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(ev, dict):
+                continue
+            if "message" in ev and ev.get("type") in _CLAUDE_EVENT_TYPES:
+                return "claude"
+            if ev.get("role") in _KIMI_ROLES:
+                return "kimi"
+    return "claude"
+
+
 def parse_round(round_dir: Path) -> Optional[dict]:
     """Locate and parse the agent trace file in ``round_dir`` (parent of .eval).
 
@@ -206,13 +305,16 @@ def parse_round(round_dir: Path) -> Optional[dict]:
     """
     pi_trace = round_dir / "agent.jsonl"
     swe_trace = round_dir / "agent.traj.json"
-    claude_trace = round_dir / "agent.stream.jsonl"
+    stream_trace = round_dir / "agent.stream.jsonl"
     if pi_trace.exists():
         return parse_pi(pi_trace)
     if swe_trace.exists():
         return parse_swe_mini(swe_trace)
-    if claude_trace.exists():
-        return parse_claude(claude_trace)
+    if stream_trace.exists():
+        # claude and kimi share this filename — pick the parser by content.
+        if _sniff_stream_agent(stream_trace) == "kimi":
+            return parse_kimi(stream_trace)
+        return parse_claude(stream_trace)
     return None
 
 
@@ -262,9 +364,12 @@ def main():
         with open(eval_dir / "stats.json", "w", encoding="utf-8") as fh:
             json.dump(stats, fh, indent=2)
         flag = "  [COMPACTED]" if stats["compacted"] else ""
+        # None = the agent's trace carries no usage (kimi), not a measured zero.
+        tok = "n/a" if stats["total_tokens"] is None else stats["total_tokens"]
+        peak = "n/a" if stats["peak_context"] is None else stats["peak_context"]
         print(
             f"[stats] {round_dir}: {stats['turns']} turns, {stats['steps']} steps, "
-            f"{stats['total_tokens']} tok, peak ctx {stats['peak_context']}{flag}"
+            f"{tok} tok, peak ctx {peak}{flag}"
         )
         written += 1
 
