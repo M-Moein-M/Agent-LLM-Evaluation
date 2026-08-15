@@ -1,0 +1,5 @@
+# built artifacts — rebuild with ./build.sh and build_web.py
+*.sif
+*.sif.bak-*
+__pycache__/
+web/

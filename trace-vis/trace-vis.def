@@ -1,0 +1,110 @@
+Bootstrap: docker
+From: python:3.12-slim
+
+# Apptainer image for the agent trace viewer.
+#
+# Build (from inside this directory — %files paths are relative to the build CWD):
+#   cd trace-vis && ./build.sh
+# or explicitly:
+#   APPTAINER_CACHEDIR=$TMPDIR/apptainer-cache \
+#   apptainer build --fakeroot trace-vis.sif trace-vis.def
+#
+# The frontend is BUILT DURING %post: build_web.py concatenates the vendored
+# libs and our JS modules in load order, hashes the result, and rewrites
+# index.html to point at bundle.<hash>.js / style.<hash>.css. selftest.py then
+# gates the image — a parser regression, a missing asset or unbalanced JS fails
+# the build instead of shipping a blank page. Both steps are offline; only the
+# base-image pull needs network.
+#
+# Run:
+#   ./run.sh                     # binds the repo read-only, prints the URL
+#   apptainer run -B /path/to/nhr-eval-workspace:/workspace:ro trace-vis.sif
+#
+# The workspace is bound READ-ONLY on purpose: this is a viewer, it never
+# writes to traces/.
+
+%files
+    app.py        /opt/trace-vis/app.py
+    parsers.py    /opt/trace-vis/parsers.py
+    indexer.py    /opt/trace-vis/indexer.py
+    curation.py   /opt/trace-vis/curation.py
+    build_web.py  /opt/trace-vis/build_web.py
+    selftest.py   /opt/trace-vis/selftest.py
+    static        /opt/trace-vis/static
+
+%post
+    set -eu
+    cd /opt/trace-vis
+
+    # bind target for the workspace; must exist in the image
+    mkdir -p /workspace
+
+    echo "== building the frontend =="
+    python3 build_web.py --out /opt/trace-vis/web
+
+    echo "== selftest (build gate) =="
+    python3 selftest.py
+
+    echo "== verifying the built bundle =="
+    python3 build_web.py --out /opt/trace-vis/web --check
+
+    # static/ is only the build input — the image serves web/ — but it stays so
+    # `--app selftest` can still check assets and lint the JS inside the image
+    python3 -m compileall -q /opt/trace-vis || true
+
+    chmod -R a+rX /opt/trace-vis
+    chmod a+x /opt/trace-vis/app.py
+
+    printf 'built %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > /opt/trace-vis/BUILD_INFO
+    cat /opt/trace-vis/web/build-info.json >> /opt/trace-vis/BUILD_INFO
+
+%environment
+    export TRACE_VIS_WORKSPACE=/workspace
+    export TRACE_VIS_STATIC=/opt/trace-vis/web
+    export TRACE_VIS_HOST=127.0.0.1
+    export TRACE_VIS_PORT=8080
+    export PYTHONDONTWRITEBYTECODE=1
+    export PYTHONUNBUFFERED=1
+
+%runscript
+    exec python3 /opt/trace-vis/app.py "$@"
+
+%startscript
+    exec python3 /opt/trace-vis/app.py "$@"
+
+%test
+    set -eu
+    cd /opt/trace-vis
+    python3 selftest.py
+    python3 build_web.py --out /opt/trace-vis/web --check
+
+%apprun selftest
+    exec python3 /opt/trace-vis/selftest.py "$@"
+
+%apphelp selftest
+    Re-runs the parser/asset/lint checks inside the image. Add
+    --workspace /workspace to also parse real traces from the bound repo.
+
+%labels
+    Author  nhr-eval-workspace
+    Name    trace-vis
+    Version 1.0.0
+
+%help
+    trace-vis — browse agent trajectories from an nhr-eval-workspace checkout.
+
+    Start:
+      apptainer run -B /path/to/nhr-eval-workspace:/workspace:ro trace-vis.sif
+      apptainer run -B ...:/workspace:ro trace-vis.sif --port 8137
+    then open http://localhost:8137 (add --host 0.0.0.0 to expose off-box, or
+    forward with: ssh -N -L 8137:localhost:8137 <this-host>).
+
+    Options (passed straight to app.py):
+      --workspace DIR   repo root holding traces/ and results/ (default /workspace)
+      --host HOST       bind address (default 127.0.0.1)
+      --port PORT       (default 8080)
+      --scan-fs         also list rounds that never produced an eval result
+                        (walks traces/, slow on a cluster filesystem)
+
+    Checks:
+      apptainer run --app selftest trace-vis.sif --workspace /workspace

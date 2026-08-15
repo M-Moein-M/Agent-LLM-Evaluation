@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>trace-vis</title>
+<link rel="stylesheet" href="/css/style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='13' font-size='14'>◷</text></svg>">
+</head>
+<body>
+
+<header class="top">
+  <a class="brand" href="#/">trace<span>·</span>vis</a>
+  <nav class="tabs">
+    <a href="#/" data-tab="home">Overview</a>
+    <a href="#/problems" data-tab="problems">By problem</a>
+    <a href="#/agents" data-tab="agents">By agent</a>
+  </nav>
+  <span class="spacer"></span>
+  <div class="scope" id="scope-sw" title="Which runs the lists show">
+    <button data-scope="curated">Important runs</button>
+    <button data-scope="all">All runs</button>
+  </div>
+  <button class="icon-btn" id="theme-btn" title="Toggle light/dark">◐</button>
+</header>
+
+<main id="view"><div class="loading">Loading…</div></main>
+
+<button class="totop" id="totop" title="Back to top">↑</button>
+
+<script src="/vendor/marked.min.js"></script>
+<script src="/vendor/purify.min.js"></script>
+<script src="/js/markdown.js"></script>
+<script src="/js/timeline.js"></script>
+<script src="/js/app.js"></script>
+</body>
+</html>
