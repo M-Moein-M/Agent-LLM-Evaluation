@@ -37,12 +37,14 @@ eval-*-groups/
 # Work-in-progress, deliberately kept out of git for now
 problems/MD-Bench/
 agents/apptainer/kimi/
+agents/apptainer/kimi-edited/
 
 # Large per-problem input data (downloaded via problems/<name>/download-input.sh)
 data/
 # pi agent local fork: now a git submodule (git.example.org/<user>/pi-edited,
-# branch step-limit-0.80.2, pi-dist tarballs committed inside it). Only the
-# legacy archives stay ignored.
+# branch step-limit-0.80.2). agent.def builds pi-dist/*.tgz from source inside
+# the container at image-build time; no tarballs are committed in the fork
+# anymore. Only the legacy archives stay ignored.
 agents/apptainer/pi/pi-edited.tar.gz
 agents/apptainer/pi/pi.tar.gz
 
