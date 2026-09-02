@@ -45,7 +45,14 @@ pi --list-models
 # making progress. --step-limit bounds the NUMBER of turns; a truly hung tool call
 # is handled out-of-band (kill the leaf proc) per [[pi-solve-no-tool-timeout-hang]].
 # The graded replay in measure.sh IS capped, since Phase 2 is serial.
-pi -p --mode json --step-limit "$EVAL_STEP_LIMIT" --model "$EVAL_MODEL" "$PROMPT" 2>/dev/null \
+#
+# The trace is written straight into $PROBLEM_DIR, not staged in $HOME and copied
+# after. Under pipefail a failed write on the shared job stdout aborts the script,
+# and the old `tee ~/agent.jsonl` + trailing `cp` lost the whole trace when that
+# happened -- the round still measured, because the sources were intact, so it
+# looked complete with no log. Writing in place means the file survives any exit.
+# pi's stderr is kept for the same reason: 2>/dev/null left nothing to diagnose.
+pi -p --mode json --step-limit "$EVAL_STEP_LIMIT" --model "$EVAL_MODEL" "$PROMPT" \
+		2> "$PROBLEM_DIR/agent.stderr.log" \
 	| { grep --line-buffered -Ev '"type":"(message_update|tool_execution_update)"' || true; } \
-	| tee ~/agent.jsonl
-cp ~/agent.jsonl "$PROBLEM_DIR"
+	> "$PROBLEM_DIR/agent.jsonl"
