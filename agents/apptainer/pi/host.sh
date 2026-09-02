@@ -49,6 +49,26 @@ DATA_ROOT="${DATA_ROOT:-$ROOT/data}"
 # ($TMPDIR), so unrelated jobs never contend; set MEASURE_LOCK explicitly to
 # share it across processes within one job (e.g. a merged kimi+pi wave).
 MEASURE_LOCK="${MEASURE_LOCK:-${TMPDIR:-/tmp}/agent-eval-measure.lock}"
+# Solve-phase liveness watchdog (see agents/apptainer/kimi/host.sh for the
+# full rationale/job history -- a flat 30min EVAL_SOLVE_TIMEOUT was killing
+# legitimate slow rounds mid-compile/mid-benchmark). solve_job backgrounds
+# apptainer exec and polls the agent's own trace file (size+mtime) instead of
+# blindly capping wall time:
+#   EVAL_SOLVE_STALL_TIMEOUT -- kill if the log file hasn't changed in this
+#     long ("dead vs progress"). 1h default.
+#   EVAL_SOLVE_TIMEOUT -- absolute backstop per round regardless of liveness.
+#     Bumped from the old 30min flat cap to 4h now that liveness, not wall
+#     time, is the primary kill signal.
+#   EVAL_SOLVE_POLL_INTERVAL -- how often to check.
+# Each parallel Phase 1 solve_job() call already runs as its own backgrounded
+# subshell, so concurrent rounds get independent timers for free.
+EVAL_SOLVE_STALL_TIMEOUT="${EVAL_SOLVE_STALL_TIMEOUT:-3600}"
+EVAL_SOLVE_TIMEOUT="${EVAL_SOLVE_TIMEOUT:-14400}"
+EVAL_SOLVE_POLL_INTERVAL="${EVAL_SOLVE_POLL_INTERVAL:-60}"
+# Measure phase stays a flat blocking timeout -- strictly serial +
+# GPU-isolated already, a different failure mode from solve's LLM-request
+# stalls, out of scope for this fix.
+EVAL_MEASURE_TIMEOUT="${EVAL_MEASURE_TIMEOUT:-1800}"
 # Overrides the trace/workdir model folder name, which is otherwise derived from
 # the model id sent to the gateway. Needed when the gateway REUSES one id for a
 # new checkpoint (e.g. deepseek-ai/DeepSeek-V4-Flash silently became the -0731
@@ -129,6 +149,7 @@ solve_job() {
     local PROBLEM="$PROBLEM_DIR/$PROBLEM_NAME"
     local WORK_DIR; WORK_DIR="$(job_workdir "$MODEL_TAG" "$ROUND" "$PROBLEM_NAME")"
     local PIHOME;   PIHOME="$(job_home "$MODEL_TAG" "$ROUND" "$PROBLEM_NAME")"
+    local TRACE_DIR; TRACE_DIR="$(job_tracedir "$MODEL_TAG" "$ROUND" "$PROBLEM_NAME")"
 
     echo "[solve] problem: $PROBLEM_NAME | agent: $AGENT | model: $MODEL | round: $ROUND"
     mkdir -p "$WORK_DIR"
@@ -152,6 +173,8 @@ solve_job() {
         DATA_BIND=(--bind "$DATA_ROOT/$PROBLEM_NAME/RabbitInput:/problem/RabbitInput:ro")
     fi
 
+    local LOG_FILE="$WORK_DIR/agent.jsonl"
+
     apptainer exec --cleanenv "${NV_FLAG[@]}" \
         --home "$PIHOME:/root" \
         --env "EVAL_AGENT=$AGENT" \
@@ -163,7 +186,66 @@ solve_job() {
         --bind "$WORK_DIR:/problem" \
         --bind "$SOLVE_SCRIPT:/solve.sh:ro" \
         "${DATA_BIND[@]}" \
-        "$AGENT_SIF" /bin/bash -l /solve.sh /problem
+        "$AGENT_SIF" /bin/bash -l /solve.sh /problem &
+    local APP_PID=$!
+
+    # Liveness watchdog -- see EVAL_SOLVE_STALL_TIMEOUT/EVAL_SOLVE_TIMEOUT
+    # comment near the top of this file.
+    local START_TS=$SECONDS last_size=-1 last_mtime=-1 last_change_ts=$SECONDS kill_reason=""
+    while kill -0 "$APP_PID" 2>/dev/null; do
+        sleep "$EVAL_SOLVE_POLL_INTERVAL"
+        if [[ -f "$LOG_FILE" ]]; then
+            local cur_size cur_mtime
+            cur_size=$(stat -c%s "$LOG_FILE" 2>/dev/null || echo -1)
+            cur_mtime=$(stat -c%Y "$LOG_FILE" 2>/dev/null || echo -1)
+            if [[ "$cur_size" != "$last_size" || "$cur_mtime" != "$last_mtime" ]]; then
+                last_size="$cur_size"; last_mtime="$cur_mtime"; last_change_ts=$SECONDS
+            fi
+        fi
+        if (( SECONDS - last_change_ts >= EVAL_SOLVE_STALL_TIMEOUT )); then
+            kill_reason="STALL: no change to $(basename "$LOG_FILE") for ${EVAL_SOLVE_STALL_TIMEOUT}s"
+            break
+        fi
+        if (( SECONDS - START_TS >= EVAL_SOLVE_TIMEOUT )); then
+            kill_reason="ABSOLUTE TIMEOUT after ${EVAL_SOLVE_TIMEOUT}s"
+            break
+        fi
+    done
+
+    local rc
+    if [[ -n "$kill_reason" ]]; then
+        echo "[solve] $kill_reason: $PROBLEM_NAME | round: $ROUND -- killing pid $APP_PID" >&2
+        kill -TERM "$APP_PID" 2>/dev/null
+        for _ in $(seq 1 10); do kill -0 "$APP_PID" 2>/dev/null || break; sleep 1; done
+        kill -KILL "$APP_PID" 2>/dev/null
+        wait "$APP_PID" 2>/dev/null
+        rc=124
+    else
+        wait "$APP_PID"
+        rc=$?
+    fi
+
+    mkdir -p "$TRACE_DIR"
+    rsync -a --prune-empty-dirs --compare-dest="$PROBLEM/" --exclude=".pi/agent/" "$WORK_DIR/" "$TRACE_DIR/"
+    diff -ru --exclude=".git" "$PROBLEM/" "$WORK_DIR/" > "$TRACE_DIR/changed_diff.txt" 2>/dev/null || true
+
+    if [ "$rc" -eq 124 ]; then
+        echo "[solve] TIMEOUT (${kill_reason:-external}): $PROBLEM_NAME | round: $ROUND -- partial output evacuated to $TRACE_DIR, skipping measure" >&2
+        touch "$TRACE_DIR/.solve_timeout"
+    elif [ "$rc" -ne 0 ]; then
+        echo "[solve] FAILED rc=$rc: $PROBLEM_NAME | round: $ROUND -- solve.sh exited non-zero, output evacuated to $TRACE_DIR" >&2
+    fi
+
+    # agent.jsonl is the one artifact nothing downstream can reconstruct. Phase 1
+    # backgrounds solve_job with `&` and never reads the status off `wait -n`, and
+    # measure_job still grades whatever sources the agent left in the workdir — so
+    # a solve that died before persisting its trace produces a complete-looking,
+    # fully measured round with no log. Mark it at the point we still know.
+    if [ ! -s "$TRACE_DIR/agent.jsonl" ]; then
+        echo "[solve] NO TRACE: $PROBLEM_NAME | round: $ROUND (rc=$rc) -- no agent.jsonl in $TRACE_DIR" >&2
+        touch "$TRACE_DIR/.no_trace"
+    fi
+    return "$rc"
 }
 
 # ---------------------------------------------------------------------------
@@ -177,6 +259,12 @@ measure_job() {
     local WORK_DIR;  WORK_DIR="$(job_workdir "$MODEL_TAG" "$ROUND" "$PROBLEM_NAME")"
     local PIHOME;    PIHOME="$(job_home "$MODEL_TAG" "$ROUND" "$PROBLEM_NAME")"
     local TRACE_DIR; TRACE_DIR="$(job_tracedir "$MODEL_TAG" "$ROUND" "$PROBLEM_NAME")"
+
+    if [ -f "$TRACE_DIR/.solve_timeout" ]; then
+        echo "[measure] SKIP $PROBLEM_NAME | round: $ROUND -- solve phase timed out, no complete solution to measure" >&2
+        rm -rf "$WORK_DIR" "$PIHOME"
+        return 0
+    fi
 
     echo "[measure] problem: $PROBLEM_NAME | agent: $AGENT | model: $MODEL | round: $ROUND"
 
@@ -195,7 +283,7 @@ measure_job() {
 
     (
         flock -x 200
-        apptainer exec --cleanenv "${NV_FLAG[@]}" \
+        timeout "$EVAL_MEASURE_TIMEOUT" apptainer exec --cleanenv "${NV_FLAG[@]}" \
             --env "EVAL_AGENT=$AGENT" \
             --env "EVAL_MODEL=$MODEL" \
             --env "EVAL_ROUND=$ROUND" \
@@ -207,6 +295,7 @@ measure_job() {
             "${GRADE_BIND[@]}" \
             "$AGENT_SIF" /bin/bash -l /measure.sh /problem
     ) 200>"$MEASURE_LOCK"
+    local rc=$?
 
     # Host-side trace extraction (no container needed — Apptainer wrote everything
     # as you on a coherent FS). --compare-dest keeps only files the agent changed
@@ -215,9 +304,17 @@ measure_job() {
     rsync -a --prune-empty-dirs --compare-dest="$PROBLEM/" --exclude=".pi/agent/" "$WORK_DIR/" "$TRACE_DIR/"
     diff -ru --exclude=".git" "$PROBLEM/" "$WORK_DIR/" > "$TRACE_DIR/changed_diff.txt" 2>/dev/null || true
 
+    if [ "$rc" -eq 124 ]; then
+        echo "[measure] TIMEOUT after ${EVAL_MEASURE_TIMEOUT}s: $PROBLEM_NAME | round: $ROUND -- solve output already evacuated at $TRACE_DIR (no .eval/facts.json); use scripts/remeasure.sh to retry measurement standalone" >&2
+        touch "$TRACE_DIR/.measure_timeout"
+    fi
+
     if [ ! -s "$TRACE_DIR/.eval/facts.json" ]; then
-        echo "ERROR: no .eval/facts.json in trace for ${PROBLEM_NAME} | ${MODEL} | round-${ROUND} — extraction produced no evidence. Aborting eval." >&2
-        exit 1
+        echo "ERROR: no .eval/facts.json in trace for ${PROBLEM_NAME} | ${MODEL} | round-${ROUND} — extraction produced no evidence." >&2
+        if [ "$rc" -ne 124 ]; then
+            rm -rf "$WORK_DIR" "$PIHOME"
+            return 1
+        fi
     fi
     cat "$TRACE_DIR/changed_diff.txt" 2>/dev/null || true
 
