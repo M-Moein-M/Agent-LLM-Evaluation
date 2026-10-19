@@ -1,0 +1,37 @@
+diff --git a/packages/coding-agent/src/core/tools/bash.ts b/packages/coding-agent/src/core/tools/bash.ts
+index da6934e7..2748d62b 100644
+--- a/packages/coding-agent/src/core/tools/bash.ts
++++ b/packages/coding-agent/src/core/tools/bash.ts
+@@ -21,9 +21,17 @@ import { getTextOutput, invalidArgText, str } from "./render-utils.ts";
+ import { wrapToolDefinition } from "./tool-definition-wrapper.ts";
+ import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, type TruncationResult } from "./truncate.ts";
+ 
++// Matches the environment.timeout=600 used for this eval harness's swe-mini
++// agent (agents/apptainer/swe-mini/solve.sh) — long enough for CUDA builds, short
++// enough to catch a genuinely stuck command instead of burning a solve slot
++// for hours (see the stream-compact test_scan hang this was added to fix).
++const DEFAULT_BASH_TIMEOUT_SECONDS = 600;
++
+ const bashSchema = Type.Object({
+ 	command: Type.String({ description: "Bash command to execute" }),
+-	timeout: Type.Optional(Type.Number({ description: "Timeout in seconds (optional, no default timeout)" })),
++	timeout: Type.Optional(
++		Type.Number({ description: `Timeout in seconds (optional, defaults to ${DEFAULT_BASH_TIMEOUT_SECONDS}s)` }),
++	),
+ });
+ 
+ export type BashToolInput = Static<typeof bashSchema>;
+@@ -286,11 +294,12 @@ export function createBashToolDefinition(
+ 		parameters: bashSchema,
+ 		async execute(
+ 			_toolCallId,
+-			{ command, timeout }: { command: string; timeout?: number },
++			{ command, timeout: timeoutArg }: { command: string; timeout?: number },
+ 			signal?: AbortSignal,
+ 			onUpdate?,
+ 			_ctx?,
+ 		) {
++			const timeout = timeoutArg ?? DEFAULT_BASH_TIMEOUT_SECONDS;
+ 			const resolvedCommand = commandPrefix ? `${commandPrefix}\n${command}` : command;
+ 			const spawnContext = resolveSpawnContext(resolvedCommand, cwd, spawnHook);
+ 			const output = new OutputAccumulator({ tempFilePrefix: "pi-bash" });

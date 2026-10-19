@@ -1,4 +1,0 @@
-[submodule "agents/apptainer/pi/pi-edited"]
-	path = agents/apptainer/pi/pi-edited
-	url = git@git.example.org:<user>/pi-edited.git
-	branch = step-limit-0.80.2

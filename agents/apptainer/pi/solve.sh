@@ -52,7 +52,45 @@ pi --list-models
 # happened -- the round still measured, because the sources were intact, so it
 # looked complete with no log. Writing in place means the file survives any exit.
 # pi's stderr is kept for the same reason: 2>/dev/null left nothing to diagnose.
+#
+# End watch (2026-09-24, same as kimi/solve.sh): if pi is still alive END_GRACE_S
+# after its final `agent_end` event, it is ended. The watch reads pi's stdout
+# through a FIFO, so text the agent writes into agent.jsonl cannot trigger it.
+# Processes left behind die with the container (host.sh runs apptainer exec --pid).
+END_GRACE_S="${EVAL_END_GRACE_S:-60}"
+end_watch() {  # $1 agent pid, $2 jq condition on the agent's final event; stdin = agent stdout
+	jq -R --unbuffered -c "fromjson? | objects | select($2) | 1" 2>/dev/null | {
+		if read -r _; then
+			local i=0
+			while kill -0 "$1" 2>/dev/null && (( i++ < END_GRACE_S )); do sleep 1; done
+			if kill -0 "$1" 2>/dev/null; then
+				echo "$(date +%FT%T) agent alive ${END_GRACE_S}s after its final event, ending it" \
+					>> "$PROBLEM_DIR/agent.end_watch.log"
+				kill -TERM "$1" 2>/dev/null || true
+				sleep 10
+				kill -KILL "$1" 2>/dev/null || true
+			fi
+		fi
+		cat > /dev/null
+	}
+}
+FIFO="$(mktemp -u /tmp/agent-stream.XXXXXX)"
+mkfifo "$FIFO"
 pi -p --mode json --step-limit "$EVAL_STEP_LIMIT" --model "$EVAL_MODEL" "$PROMPT" \
-		2> "$PROBLEM_DIR/agent.stderr.log" \
+		> "$FIFO" 2> "$PROBLEM_DIR/agent.stderr.log" &
+AGENT_PID=$!
+{ tee -p >(end_watch "$AGENT_PID" '.type == "agent_end"') < "$FIFO" & echo $! > "$FIFO.tee"; wait; } \
 	| { grep --line-buffered -Ev '"type":"(message_update|tool_execution_update)"' || true; } \
-	> "$PROBLEM_DIR/agent.jsonl"
+	> "$PROBLEM_DIR/agent.jsonl" &
+READER_PID=$!
+# pi's exit code stays the script's exit code, except when the end watch ended it.
+rc=0
+wait "$AGENT_PID" || rc=$?
+# A leftover child can hold pi's stdout open, so tee may never see EOF. Let it
+# drain for up to 5 s, then stop it.
+for _ in 1 2 3 4 5; do kill -0 "$READER_PID" 2>/dev/null || break; sleep 1; done
+kill "$(cat "$FIFO.tee")" 2>/dev/null || true
+wait "$READER_PID" || true
+rm -f "$FIFO" "$FIFO.tee"
+[ "$rc" -ne 0 ] && [ -f "$PROBLEM_DIR/agent.end_watch.log" ] && rc=0
+exit "$rc"

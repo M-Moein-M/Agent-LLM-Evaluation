@@ -1,31 +1,27 @@
 Bootstrap: docker
 From: nvidia/cuda:12.4.1-devel-ubuntu22.04
 
-# Apptainer image for the pi agent. Mirrors agents/docker/pi/Dockerfile (CUDA
-# devel base + Node 22 + pi-coding-agent) so the cluster runs the exact same
-# toolchain as local Docker. The previous def bootstrapped node:20-slim, which
-# had NO CUDA toolkit and could not compile/run the GPU problems.
+# Apptainer image for the pi agent: CUDA devel base + Node 22 + pi built from
+# upstream source with two small patches.
 #
-# Build (on a node with fakeroot — you have it):
+# Build (needs network; fakeroot):
 #   APPTAINER_CACHEDIR=$TMPDIR/apptainer-cache \
 #   apptainer build --fakeroot agents/apptainer/pi/agent.sif agents/apptainer/pi/agent.def
-#
-# NOTE: this image installs a LOCAL FORK of pi (adds the `--step-limit` CLI flag),
-# NOT the public @mariozechner/pi-coding-agent package. The fork is built from
-# source INSIDE this container (%post below runs the pack/install steps from
-# pi-edited/README.md's FORK NOTE) — the cluster's build/login nodes have no
-# npm, so no prebuilt pi-dist/*.tgz are needed or checked in anymore. The
-# build step needs network access (npm registry + pi-ai's model-list fetch).
 # %files paths are relative to the build CWD, so build from the repo root.
+#
+# PI VERSION: the measured results ran upstream earendil-works/pi at commit
+# fd6659dd5d32d67feaa7ce2ba5eeb87c5705149c (main, ~100 commits after the v0.80.2 tag,
+# package version still 0.80.2) plus the two patches in agents/apptainer/pi/patches/:
+#   0001-step-limit.patch           adds `--step-limit <n>` (caps assistant turns)
+#   0002-bash-default-timeout.patch bash tool defaults to a 600 s timeout
+# Do not move to a newer pi without re-checking the trace parsers (checks/trace_stats.py)
+# and the models.json schema. Override the commit with --build-arg PI_COMMIT=<sha>.
+
+%arguments
+    PI_COMMIT=fd6659dd5d32d67feaa7ce2ba5eeb87c5705149c
 
 %files
-    agents/apptainer/pi/pi-edited/package.json /opt/pi-src/package.json
-    agents/apptainer/pi/pi-edited/package-lock.json /opt/pi-src/package-lock.json
-    agents/apptainer/pi/pi-edited/.npmrc /opt/pi-src/.npmrc
-    agents/apptainer/pi/pi-edited/tsconfig.json /opt/pi-src/tsconfig.json
-    agents/apptainer/pi/pi-edited/tsconfig.base.json /opt/pi-src/tsconfig.base.json
-    agents/apptainer/pi/pi-edited/biome.json /opt/pi-src/biome.json
-    agents/apptainer/pi/pi-edited/packages /opt/pi-src/packages
+    agents/apptainer/pi/patches /opt/pi-patches
 
 %post
     echo "############################################################"
@@ -51,20 +47,26 @@ From: nvidia/cuda:12.4.1-devel-ubuntu22.04
         jq \
         && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-    # Node.js 22.x — the pi fork bundles undici@8.5.0, which needs Node >= 22
-    # (uses webidl.util.markAsUncloneable). Node 20 makes pi crash on launch.
+    # Node.js 22.x: pi bundles undici@8.5.0, which needs Node >= 22. Node 20 crashes on launch.
     curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
     apt-get update -y && apt-get install -y --no-install-recommends nodejs \
         && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-    # Build the local pi fork from source (FORK NOTE steps from
-    # pi-edited/README.md), then install all four packed tarballs in a single
-    # `npm install` so the cross-package deps (@earendil-works/pi-*) resolve to
-    # these local builds instead of the public registry. The binary is still
-    # named `pi`, so host.sh/solve.sh need no change.
-    cd /opt/pi-src
+    # Fetch upstream pi at the pinned commit, apply our patches, build the four
+    # workspace packages, then install the packed tarballs in a single `npm install -g`
+    # so the cross-package deps (@earendil-works/pi-*) resolve to these local builds.
+    # The binary is named `pi`.
+    mkdir -p /opt/pi-src && cd /opt/pi-src
+    git init -q . && git remote add origin https://github.com/earendil-works/pi
+    git fetch -q --depth 1 origin "{{ PI_COMMIT }}" && git checkout -q FETCH_HEAD
+    for f in /opt/pi-patches/*.patch; do git apply "$f"; done
     npm ci --ignore-scripts
-    for p in ai tui agent coding-agent; do
+    # pi-ai's own `build` first downloads the live provider model catalogs, which moves
+    # with the internet and no longer type-checks against this pinned source. Compile with
+    # the catalogs committed at the pinned commit instead (our endpoints define their own
+    # models in models.json, so the built-in catalog is not used).
+    (cd packages/ai && npx tsgo -p tsconfig.build.json)
+    for p in tui agent coding-agent; do
         npm run build --workspace="$(node -p "require('./packages/$p/package.json').name")"
     done
     mkdir -p /opt/pi-dist
@@ -73,7 +75,7 @@ From: nvidia/cuda:12.4.1-devel-ubuntu22.04
     done
     npm install -g /opt/pi-dist/earendil-works-pi-*.tgz
     cd /
-    rm -rf /opt/pi-src /opt/pi-dist
+    rm -rf /opt/pi-src /opt/pi-dist /opt/pi-patches
 
     # Nsight Systems CLI (nsys) for trustworthy external kernel timing in the
     # perf-grading path. The CUDA base repo does NOT carry the standalone CLI, so

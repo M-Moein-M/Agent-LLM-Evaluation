@@ -1,0 +1,333 @@
+diff --git a/packages/agent/src/agent-loop.ts b/packages/agent/src/agent-loop.ts
+index d93458d0..aabdeb6a 100644
+--- a/packages/agent/src/agent-loop.ts
++++ b/packages/agent/src/agent-loop.ts
+@@ -163,6 +163,8 @@ async function runLoop(
+ 	let currentContext = initialContext;
+ 	let config = initialConfig;
+ 	let firstTurn = true;
++	let turnCount = 0;
++	const maxTurns = config.maxTurns !== undefined && config.maxTurns > 0 ? config.maxTurns : undefined;
+ 	// Check for steering messages at start (user may have typed while waiting)
+ 	let pendingMessages: AgentMessage[] = (await config.getSteeringMessages?.()) || [];
+ 
+@@ -192,6 +194,7 @@ async function runLoop(
+ 			// Stream assistant response
+ 			const message = await streamAssistantResponse(currentContext, config, signal, emit, streamFn);
+ 			newMessages.push(message);
++			turnCount++;
+ 
+ 			if (message.stopReason === "error" || message.stopReason === "aborted") {
+ 				await emit({ type: "turn_end", message, toolResults: [] });
+@@ -250,6 +253,13 @@ async function runLoop(
+ 				return;
+ 			}
+ 
++			// Stop once the configured turn cap is reached, regardless of pending tool
++			// calls or queued steering/follow-up messages.
++			if (maxTurns !== undefined && turnCount >= maxTurns) {
++				await emit({ type: "agent_end", messages: newMessages });
++				return;
++			}
++
+ 			pendingMessages = (await config.getSteeringMessages?.()) || [];
+ 		}
+ 
+diff --git a/packages/agent/src/agent.ts b/packages/agent/src/agent.ts
+index ab10d5ac..96445695 100644
+--- a/packages/agent/src/agent.ts
++++ b/packages/agent/src/agent.ts
+@@ -118,6 +118,8 @@ export interface AgentOptions {
+ 	transport?: Transport;
+ 	maxRetryDelayMs?: number;
+ 	toolExecution?: ToolExecutionMode;
++	/** Hard cap on assistant turns per prompt/continue run. See {@link AgentLoopConfig.maxTurns}. */
++	maxTurns?: number;
+ }
+ 
+ class PendingMessageQueue {
+@@ -206,6 +208,8 @@ export class Agent {
+ 	public maxRetryDelayMs?: number;
+ 	/** Tool execution strategy for assistant messages that contain multiple tool calls. */
+ 	public toolExecution: ToolExecutionMode;
++	/** Hard cap on assistant turns per prompt/continue run. Undefined or non-positive means no limit. */
++	public maxTurns?: number;
+ 
+ 	constructor(options: AgentOptions = {}) {
+ 		this._state = createMutableAgentState(options.initialState);
+@@ -226,6 +230,7 @@ export class Agent {
+ 		this.transport = options.transport ?? "auto";
+ 		this.maxRetryDelayMs = options.maxRetryDelayMs;
+ 		this.toolExecution = options.toolExecution ?? "parallel";
++		this.maxTurns = options.maxTurns;
+ 	}
+ 
+ 	/**
+@@ -441,6 +446,7 @@ export class Agent {
+ 			thinkingBudgets: this.thinkingBudgets,
+ 			maxRetryDelayMs: this.maxRetryDelayMs,
+ 			toolExecution: this.toolExecution,
++			maxTurns: this.maxTurns,
+ 			beforeToolCall: this.beforeToolCall,
+ 			afterToolCall: this.afterToolCall,
+ 			prepareNextTurn:
+diff --git a/packages/agent/src/types.ts b/packages/agent/src/types.ts
+index abfa3de6..f2719fca 100644
+--- a/packages/agent/src/types.ts
++++ b/packages/agent/src/types.ts
+@@ -258,6 +258,20 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
+ 	 */
+ 	toolExecution?: ToolExecutionMode;
+ 
++	/**
++	 * Hard cap on the number of assistant turns this loop invocation may run.
++	 *
++	 * A turn is one assistant response plus any tool calls/results it triggers (the
++	 * `turn_start`/`turn_end` lifecycle). Once this many turns have completed the loop
++	 * emits `agent_end` and stops, even if the model requested more tool calls and even
++	 * if steering or follow-up messages are queued. Steering/follow-up queues are not
++	 * polled after the cap is reached.
++	 *
++	 * The count is per loop invocation (one `prompt`/`continue` run), not cumulative
++	 * across a session. Undefined or a non-positive value means no limit.
++	 */
++	maxTurns?: number;
++
+ 	/**
+ 	 * Called before a tool is executed, after arguments have been validated.
+ 	 *
+diff --git a/packages/agent/test/agent-loop.test.ts b/packages/agent/test/agent-loop.test.ts
+index 62eadf81..e5dc2afa 100644
+--- a/packages/agent/test/agent-loop.test.ts
++++ b/packages/agent/test/agent-loop.test.ts
+@@ -1064,6 +1064,106 @@ describe("agentLoop with AgentMessage", () => {
+ 		]);
+ 	});
+ 
++	it("should stop after maxTurns even when the model keeps requesting tool calls", async () => {
++		const toolSchema = Type.Object({ value: Type.String() });
++		const executed: string[] = [];
++		const tool: AgentTool<typeof toolSchema, { value: string }> = {
++			name: "echo",
++			label: "Echo",
++			description: "Echo tool",
++			parameters: toolSchema,
++			async execute(_toolCallId, params) {
++				executed.push(params.value);
++				return {
++					content: [{ type: "text", text: `echoed: ${params.value}` }],
++					details: { value: params.value },
++				};
++			},
++		};
++
++		const context: AgentContext = {
++			systemPrompt: "",
++			messages: [],
++			tools: [tool],
++		};
++
++		let followUpPolls = 0;
++		const config: AgentLoopConfig = {
++			model: createModel(),
++			convertToLlm: identityConverter,
++			maxTurns: 2,
++			getFollowUpMessages: async () => {
++				followUpPolls++;
++				return [];
++			},
++		};
++
++		// Model always asks for another tool call, so without the cap the loop never ends.
++		let llmCalls = 0;
++		const stream = agentLoop([createUserMessage("loop forever")], context, config, undefined, () => {
++			llmCalls++;
++			const mockStream = new MockAssistantStream();
++			const call = llmCalls;
++			queueMicrotask(() => {
++				const message = createAssistantMessage(
++					[{ type: "toolCall", id: `tool-${call}`, name: "echo", arguments: { value: `call-${call}` } }],
++					"toolUse",
++				);
++				mockStream.push({ type: "done", reason: "toolUse", message });
++			});
++			return mockStream;
++		});
++
++		const events: AgentEvent[] = [];
++		for await (const event of stream) {
++			events.push(event);
++		}
++
++		const messages = await stream.result();
++		expect(llmCalls).toBe(2);
++		expect(executed).toEqual(["call-1", "call-2"]);
++		// Cap is reached before the agent would poll for follow-up work.
++		expect(followUpPolls).toBe(0);
++		expect(events[events.length - 1].type).toBe("agent_end");
++		expect(messages.filter((message) => message.role === "assistant").length).toBe(2);
++	});
++
++	it("should treat a non-positive maxTurns as no limit", async () => {
++		const context: AgentContext = {
++			systemPrompt: "",
++			messages: [],
++			tools: [],
++		};
++
++		const config: AgentLoopConfig = {
++			model: createModel(),
++			convertToLlm: identityConverter,
++			maxTurns: 0,
++		};
++
++		let llmCalls = 0;
++		const stream = agentLoop([createUserMessage("hi")], context, config, undefined, () => {
++			llmCalls++;
++			const mockStream = new MockAssistantStream();
++			queueMicrotask(() => {
++				mockStream.push({
++					type: "done",
++					reason: "stop",
++					message: createAssistantMessage([{ type: "text", text: "done" }]),
++				});
++			});
++			return mockStream;
++		});
++
++		for await (const _event of stream) {
++			// drain
++		}
++
++		await stream.result();
++		// maxTurns=0 must not stop the loop prematurely; the single turn still runs.
++		expect(llmCalls).toBe(1);
++	});
++
+ 	it("should stop after a tool batch when every tool result sets terminate=true", async () => {
+ 		const toolSchema = Type.Object({ value: Type.String() });
+ 		const tool: AgentTool<typeof toolSchema, { value: string }> = {
+diff --git a/packages/coding-agent/src/cli/args.ts b/packages/coding-agent/src/cli/args.ts
+index 899241c4..915287af 100644
+--- a/packages/coding-agent/src/cli/args.ts
++++ b/packages/coding-agent/src/cli/args.ts
+@@ -16,6 +16,7 @@ export interface Args {
+ 	systemPrompt?: string;
+ 	appendSystemPrompt?: string[];
+ 	thinking?: ThinkingLevel;
++	stepLimit?: number;
+ 	continue?: boolean;
+ 	resume?: boolean;
+ 	help?: boolean;
+@@ -137,6 +138,21 @@ export function parseArgs(args: string[]): Args {
+ 					message: `Invalid thinking level "${level}". Valid values: ${VALID_THINKING_LEVELS.join(", ")}`,
+ 				});
+ 			}
++		} else if (arg === "--step-limit") {
++			if (i + 1 < args.length) {
++				const raw = args[++i];
++				const value = Number(raw);
++				if (!Number.isInteger(value) || value <= 0) {
++					result.diagnostics.push({
++						type: "error",
++						message: `--step-limit requires a positive integer, got "${raw}"`,
++					});
++				} else {
++					result.stepLimit = value;
++				}
++			} else {
++				result.diagnostics.push({ type: "error", message: "--step-limit requires a value" });
++			}
+ 		} else if (arg === "--print" || arg === "-p") {
+ 			result.print = true;
+ 			const next = args[i + 1];
+@@ -259,6 +275,7 @@ ${chalk.bold("Options:")}
+   --exclude-tools, -xt <tools>   Comma-separated denylist of tool names to disable
+                                  Applies to built-in, extension, and custom tools
+   --thinking <level>             Set thinking level: off, minimal, low, medium, high, xhigh
++  --step-limit <n>               Max assistant turns per prompt before the agent stops (bounds the loop)
+   --extension, -e <path>         Load an extension file (can be used multiple times)
+   --no-extensions, -ne           Disable extension discovery (explicit -e paths still work)
+   --skill <path>                 Load a skill file or directory (can be used multiple times)
+@@ -322,6 +339,9 @@ ${chalk.bold("Examples:")}
+   # Start with a specific thinking level
+   ${APP_NAME} --thinking high "Solve this complex problem"
+ 
++  # Bound the agent to at most 120 assistant turns per prompt
++  ${APP_NAME} --step-limit 120 -p "Refactor the auth module"
++
+   # Read-only mode (no file modifications possible)
+   ${APP_NAME} --tools read,grep,find,ls -p "Review the code in src/"
+ 
+diff --git a/packages/coding-agent/src/core/agent-session-services.ts b/packages/coding-agent/src/core/agent-session-services.ts
+index 3a6035cb..5f3a7313 100644
+--- a/packages/coding-agent/src/core/agent-session-services.ts
++++ b/packages/coding-agent/src/core/agent-session-services.ts
+@@ -63,6 +63,7 @@ export interface CreateAgentSessionFromServicesOptions {
+ 	excludeTools?: CreateAgentSessionOptions["excludeTools"];
+ 	noTools?: CreateAgentSessionOptions["noTools"];
+ 	customTools?: ToolDefinition[];
++	maxTurns?: CreateAgentSessionOptions["maxTurns"];
+ }
+ 
+ /**
+@@ -202,6 +203,7 @@ export async function createAgentSessionFromServices(
+ 		excludeTools: options.excludeTools,
+ 		noTools: options.noTools,
+ 		customTools: options.customTools,
++		maxTurns: options.maxTurns,
+ 		sessionStartEvent: options.sessionStartEvent,
+ 	});
+ }
+diff --git a/packages/coding-agent/src/core/sdk.ts b/packages/coding-agent/src/core/sdk.ts
+index 3bec2c32..8c9f7e36 100644
+--- a/packages/coding-agent/src/core/sdk.ts
++++ b/packages/coding-agent/src/core/sdk.ts
+@@ -70,6 +70,15 @@ export interface CreateAgentSessionOptions {
+ 	/** Custom tools to register (in addition to built-in tools). */
+ 	customTools?: ToolDefinition[];
+ 
++	/**
++	 * Hard cap on assistant turns per prompt/continue run (the `--step-limit` CLI flag).
++	 *
++	 * A turn is one assistant response plus the tool calls it triggers. Once this many
++	 * turns complete, the agent stops even if it requested more tool calls. Bounds runaway
++	 * loops. Undefined or non-positive means no limit.
++	 */
++	maxTurns?: number;
++
+ 	/** Resource loader. When omitted, DefaultResourceLoader is used. */
+ 	resourceLoader?: ResourceLoader;
+ 
+@@ -358,6 +367,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
+ 		transport: settingsManager.getTransport(),
+ 		thinkingBudgets: settingsManager.getThinkingBudgets(),
+ 		maxRetryDelayMs: settingsManager.getProviderRetrySettings().maxRetryDelayMs,
++		maxTurns: options.maxTurns,
+ 	});
+ 
+ 	// Restore messages if session has existing data
+diff --git a/packages/coding-agent/src/main.ts b/packages/coding-agent/src/main.ts
+index 6b345982..4f6397d7 100644
+--- a/packages/coding-agent/src/main.ts
++++ b/packages/coding-agent/src/main.ts
+@@ -444,6 +444,11 @@ function buildSessionOptions(
+ 		options.excludeTools = [...parsed.excludeTools];
+ 	}
+ 
++	// Step limit (bounds assistant turns per prompt)
++	if (parsed.stepLimit !== undefined) {
++		options.maxTurns = parsed.stepLimit;
++	}
++
+ 	return { options, cliThinkingFromModel, diagnostics };
+ }
+ 
+@@ -720,6 +725,7 @@ export async function main(args: string[], options?: MainOptions) {
+ 			excludeTools: sessionOptions.excludeTools,
+ 			noTools: sessionOptions.noTools,
+ 			customTools: sessionOptions.customTools,
++			maxTurns: sessionOptions.maxTurns,
+ 		});
+ 		const cliThinkingOverride = parsed.thinking !== undefined || cliThinkingFromModel;
+ 		if (created.session.model && cliThinkingOverride) {

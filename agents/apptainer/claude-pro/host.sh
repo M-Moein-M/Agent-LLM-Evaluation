@@ -49,7 +49,10 @@ EVAL_MAX_THINKING_TOKENS="${EVAL_MAX_THINKING_TOKENS:-}"
 EVAL_EFFORT="${EVAL_EFFORT:-high}"
 DATA_ROOT="${DATA_ROOT:-$ROOT/data}"
 
-DATE_TAG=$(date +%Y%m%d-%H%M%S)
+# EVAL_DATE_TAG / EVAL_ROUND_IDS (same knobs as the gateway agent's host.sh): a
+# caller that runs one round per host.sh call sets both, so every round of a
+# cell lands in one campaign dir under its own round number.
+DATE_TAG="${EVAL_DATE_TAG:-$(date +%Y%m%d-%H%M%S)}"
 echo "ROOT directory was set to $ROOT"
 [[ -d "$PROBLEM_DIR" ]] || { echo "ERROR: Run from repo root. Missing $PROBLEM_DIR" >&2; exit 1; }
 
@@ -97,7 +100,7 @@ job_tracedir() { echo "$TRACE_ROOT/$3/$AGENT/$1/$DATE_TAG/round-$2"; }
 
 JOBS=()
 for MODEL in "${MODELS[@]}"; do
-    for ROUND in $(seq 1 "$EVAL_ROUNDS"); do
+    for ROUND in ${EVAL_ROUND_IDS:-$(seq 1 "$EVAL_ROUNDS")}; do
         for PROBLEM_NAME in "${PROBLEMS[@]}"; do
             if [[ ! -d "$PROBLEM_DIR/$PROBLEM_NAME" ]]; then
                 echo "Skipping missing problem: $PROBLEM_DIR/$PROBLEM_NAME" >&2
@@ -132,7 +135,9 @@ solve_job() {
         DATA_BIND=(--bind "$DATA_ROOT/$PROBLEM_NAME/RabbitInput:/problem/RabbitInput:ro")
     fi
 
-    apptainer exec --cleanenv "${NV_FLAG[@]}" \
+    # --pid: own PID namespace per round, so an agent's pkill cannot reach the
+    # sibling solves (same as the gateway agent's host.sh).
+    apptainer exec --cleanenv --pid "${NV_FLAG[@]}" \
         --home "$CLAUDEHOME" \
         --env "EVAL_AGENT=$AGENT" \
         --env "EVAL_MODEL=$MODEL" \
@@ -217,9 +222,11 @@ for job in "${JOBS[@]}"; do
     measure_job "$MODEL" "$ROUND" "$PROBLEM_NAME"
 done
 
-if command -v python3 >/dev/null 2>&1; then
-    python3 "$ROOT/checks/check_pass.py" --traces "$TRACE_ROOT"
-    python3 "$ROOT/checks/trace_stats.py" --traces "$TRACE_ROOT"
+if [ "${EVAL_SKIP_CHECKS:-0}" = "1" ]; then
+    echo "EVAL_SKIP_CHECKS=1: skipping check_pass.py + trace_stats.py (caller runs them)."
+elif command -v python3 >/dev/null 2>&1; then
+    python3 "$ROOT/checks/check_pass.py" --traces "$TRACE_ROOT" --campaign "$DATE_TAG"
+    python3 "$ROOT/checks/trace_stats.py" --traces "$TRACE_ROOT" --campaign "$DATE_TAG"
 else
     echo "WARN: python3 not found on host — skipping pass checks. Run checks/check_pass.py + trace_stats.py manually." >&2
 fi

@@ -1,31 +1,31 @@
 #! /bin/bash -l
 
-# swe-mini agent orchestrator — APPTAINER runtime (cluster / SLURM). Two-phase
-# mirror of agents/docker/swe-mini/host.sh, adapted for Apptainer (see the pi
-# apptainer host.sh for the full rationale on the docker->apptainer deltas).
+# swe-mini agent orchestrator (Apptainer). Two-phase mirror of agents/apptainer/pi/host.sh.
 #
-# swe-mini specifics vs pi: no ~/.pi config — mini reads /models.json (jq) +
-# /mini.yaml (both bind-mounted) and gets the key/base via env in solve.sh. We
-# still hand it a clean staging HOME so litellm's cache doesn't land in your real
-# home. The in-container solve.sh/measure.sh are reused from agents/docker/swe-mini/.
+# swe-mini specifics vs pi: no ~/.pi config. mini reads /models.json (jq) and /mini.yaml (both
+# bind-mounted) and gets the key and base URL via env in solve.sh. A clean staging HOME keeps
+# litellm's cache out of your real home. solve.sh and mini.yaml live in this directory.
 
 AGENT="swe-mini"
 ROOT="$(pwd)"
 PROBLEM_DIR="$ROOT/problems"
 TRACE_ROOT="$ROOT/traces"
 AGENT_SIF="${AGENT_SIF:-$ROOT/agents/apptainer/swe-mini/agent.sif}"
-SOLVE_SCRIPT="$ROOT/agents/docker/swe-mini/solve.sh"
+SOLVE_SCRIPT="$ROOT/agents/apptainer/swe-mini/solve.sh"
 MEASURE_SCRIPT="$ROOT/agents/measure.sh"
-MINI_CONFIG="${MINI_CONFIG:-$ROOT/agents/docker/swe-mini/mini.yaml}"
-MODELS_CONFIG="${MODELS_CONFIG:-$ROOT/agents/apptainer/pi/models.json}"
+MINI_CONFIG="${MINI_CONFIG:-$ROOT/agents/apptainer/swe-mini/mini.yaml}"
+# Endpoint config: endpoints.yaml + .env -> .run/models.json, EVAL_PROVIDER, EVAL_MODELS
+# (scripts/lib/endpoint.sh). Skipped when MODELS_CONFIG is already set.
+. "$ROOT/scripts/lib/endpoint.sh" && resolve_endpoints "$ROOT" swe-mini || exit 1
 EVAL_ROUNDS="${EVAL_ROUNDS:-20}"
 EVAL_PROBLEMS="${EVAL_PROBLEMS:-RabbitCT-LolaBunny}"
 EVAL_SIZE="${EVAL_SIZE:-256}"
 EVAL_VARIANT="${EVAL_VARIANT:-LolaBunnyGPU}"
 EVAL_SOLVE_PAR="${EVAL_SOLVE_PAR:-4}"
-# Selects providers.<name> in models.json (default "local" = gateway; "llama" =
-# host). Forwarded via --env below. NB: apptainer exec inherits the host environment by DEFAULT; we pass --cleanenv
-#   to block that, so anything needed inside must be forwarded explicitly.
+# providers.<name> in models.json that supplies baseUrl + apiKey. Set by
+# scripts/lib/resolve_endpoint.py (= the endpoint name); "local" only for a hand-made
+# models.json. Forwarded via --env below: apptainer exec runs with --cleanenv, so
+# anything needed inside must be forwarded explicitly.
 EVAL_PROVIDER="${EVAL_PROVIDER:-local}"
 DATA_ROOT="${DATA_ROOT:-$ROOT/data}"
 # Cross-process GPU serialization for Phase 2. Measure is already serial WITHIN
@@ -35,6 +35,26 @@ DATA_ROOT="${DATA_ROOT:-$ROOT/data}"
 # ($TMPDIR), so unrelated jobs never contend; set MEASURE_LOCK explicitly to
 # share it across processes within one job (e.g. a merged kimi+swe-mini wave).
 MEASURE_LOCK="${MEASURE_LOCK:-${TMPDIR:-/tmp}/agent-eval-measure.lock}"
+# Solve-phase liveness watchdog (see agents/apptainer/kimi/host.sh for the
+# full rationale/job history -- a flat 30min EVAL_SOLVE_TIMEOUT was killing
+# legitimate slow rounds mid-compile/mid-benchmark). solve_job backgrounds
+# apptainer exec and polls the agent's own trace file (size+mtime) instead of
+# blindly capping wall time:
+#   EVAL_SOLVE_STALL_TIMEOUT -- kill if the log file hasn't changed in this
+#     long ("dead vs progress"). 1h default.
+#   EVAL_SOLVE_TIMEOUT -- absolute backstop per round regardless of liveness.
+#     Bumped from the old 30min flat cap to 4h now that liveness, not wall
+#     time, is the primary kill signal.
+#   EVAL_SOLVE_POLL_INTERVAL -- how often to check.
+# Each parallel Phase 1 solve_job() call already runs as its own backgrounded
+# subshell, so concurrent rounds get independent timers for free.
+EVAL_SOLVE_STALL_TIMEOUT="${EVAL_SOLVE_STALL_TIMEOUT:-3600}"
+EVAL_SOLVE_TIMEOUT="${EVAL_SOLVE_TIMEOUT:-14400}"
+EVAL_SOLVE_POLL_INTERVAL="${EVAL_SOLVE_POLL_INTERVAL:-60}"
+# Measure phase stays a flat blocking timeout -- strictly serial +
+# GPU-isolated already, a different failure mode from solve's LLM-request
+# stalls, out of scope for this fix.
+EVAL_MEASURE_TIMEOUT="${EVAL_MEASURE_TIMEOUT:-1800}"
 # Overrides the trace/workdir model folder name, which is otherwise derived from
 # the model id sent to the gateway. Needed when the gateway REUSES one id for a
 # new checkpoint (e.g. deepseek-ai/DeepSeek-V4-Flash silently became the -0731
@@ -44,7 +64,9 @@ MEASURE_LOCK="${MEASURE_LOCK:-${TMPDIR:-/tmp}/agent-eval-measure.lock}"
 # EVAL_MODELS they would all collapse into this one folder.
 EVAL_MODEL_TAG="${EVAL_MODEL_TAG:-}"
 
-DATE_TAG=$(date +%Y%m%d-%H%M%S)
+# EVAL_DATE_TAG / EVAL_ROUND_IDS: fixed campaign dir and round numbers, so one-round
+# calls from scripts/phase6/worker.py land in one campaign per cell.
+DATE_TAG="${EVAL_DATE_TAG:-$(date +%Y%m%d-%H%M%S)}"
 echo "ROOT directory was set to $ROOT"
 [[ -d "$PROBLEM_DIR" ]] || { echo "ERROR: Run from repo root. Missing $PROBLEM_DIR" >&2; exit 1; }
 
@@ -89,7 +111,7 @@ job_tracedir() { echo "$TRACE_ROOT/$3/$AGENT/$1/$DATE_TAG/round-$2"; }
 
 JOBS=()
 for MODEL in "${MODELS[@]}"; do
-    for ROUND in $(seq 1 "$EVAL_ROUNDS"); do
+    for ROUND in ${EVAL_ROUND_IDS:-$(seq 1 "$EVAL_ROUNDS")}; do
         for PROBLEM_NAME in "${PROBLEMS[@]}"; do
             if [[ ! -d "$PROBLEM_DIR/$PROBLEM_NAME" ]]; then
                 echo "Skipping missing problem: $PROBLEM_DIR/$PROBLEM_NAME" >&2
@@ -106,6 +128,7 @@ solve_job() {
     local PROBLEM="$PROBLEM_DIR/$PROBLEM_NAME"
     local WORK_DIR; WORK_DIR="$(job_workdir "$MODEL_TAG" "$ROUND" "$PROBLEM_NAME")"
     local SWEHOME;  SWEHOME="$(job_home "$MODEL_TAG" "$ROUND" "$PROBLEM_NAME")"
+    local TRACE_DIR; TRACE_DIR="$(job_tracedir "$MODEL_TAG" "$ROUND" "$PROBLEM_NAME")"
 
     echo "[solve] problem: $PROBLEM_NAME | agent: $AGENT | model: $MODEL | round: $ROUND"
     mkdir -p "$WORK_DIR" "$SWEHOME"
@@ -124,7 +147,12 @@ solve_job() {
         DATA_BIND=(--bind "$DATA_ROOT/$PROBLEM_NAME/RabbitInput:/problem/RabbitInput:ro")
     fi
 
-    apptainer exec --cleanenv "${NV_FLAG[@]}" \
+    local LOG_FILE="$WORK_DIR/agent.traj.json"
+
+    # --pid (2026-09-24): own PID namespace per round. Every process the agent started
+    # dies with the container, on a normal end and on a timeout kill (orphaned find
+    # after a kimi timeout), and an agent pkill cannot reach sibling rounds.
+    apptainer exec --cleanenv --pid "${NV_FLAG[@]}" \
         --home "$SWEHOME:/root" \
         --env "EVAL_AGENT=$AGENT" \
         --env "EVAL_MODEL=$MODEL" \
@@ -133,12 +161,61 @@ solve_job() {
         --env "EVAL_VARIANT=$EVAL_VARIANT" \
         --env "EVAL_PROVIDER=$EVAL_PROVIDER" \
         --env "EVAL_MODEL_CLASS=${EVAL_MODEL_CLASS:-}" \
+        --env "EVAL_STEP_LIMIT=${EVAL_STEP_LIMIT:-}" \
+        --env "EVAL_TOOL_CHOICE_BASH=${EVAL_TOOL_CHOICE_BASH:-0}" \
         --bind "$WORK_DIR:/problem" \
         --bind "$MODELS_CONFIG:/models.json:ro" \
         --bind "$MINI_CONFIG:/mini.yaml:ro" \
         --bind "$SOLVE_SCRIPT:/solve.sh:ro" \
         "${DATA_BIND[@]}" \
-        "$AGENT_SIF" /bin/bash -l /solve.sh /problem
+        "$AGENT_SIF" /bin/bash -l /solve.sh /problem &
+    local APP_PID=$!
+
+    # Liveness watchdog -- see EVAL_SOLVE_STALL_TIMEOUT/EVAL_SOLVE_TIMEOUT
+    # comment near the top of this file.
+    local START_TS=$SECONDS last_size=-1 last_mtime=-1 last_change_ts=$SECONDS kill_reason=""
+    while kill -0 "$APP_PID" 2>/dev/null; do
+        sleep "$EVAL_SOLVE_POLL_INTERVAL"
+        if [[ -f "$LOG_FILE" ]]; then
+            local cur_size cur_mtime
+            cur_size=$(stat -c%s "$LOG_FILE" 2>/dev/null || echo -1)
+            cur_mtime=$(stat -c%Y "$LOG_FILE" 2>/dev/null || echo -1)
+            if [[ "$cur_size" != "$last_size" || "$cur_mtime" != "$last_mtime" ]]; then
+                last_size="$cur_size"; last_mtime="$cur_mtime"; last_change_ts=$SECONDS
+            fi
+        fi
+        if (( SECONDS - last_change_ts >= EVAL_SOLVE_STALL_TIMEOUT )); then
+            kill_reason="STALL: no change to $(basename "$LOG_FILE") for ${EVAL_SOLVE_STALL_TIMEOUT}s"
+            break
+        fi
+        if (( SECONDS - START_TS >= EVAL_SOLVE_TIMEOUT )); then
+            kill_reason="ABSOLUTE TIMEOUT after ${EVAL_SOLVE_TIMEOUT}s"
+            break
+        fi
+    done
+
+    local rc
+    if [[ -n "$kill_reason" ]]; then
+        echo "[solve] $kill_reason: $PROBLEM_NAME | round: $ROUND -- killing pid $APP_PID" >&2
+        kill -TERM "$APP_PID" 2>/dev/null
+        for _ in $(seq 1 10); do kill -0 "$APP_PID" 2>/dev/null || break; sleep 1; done
+        kill -KILL "$APP_PID" 2>/dev/null
+        wait "$APP_PID" 2>/dev/null
+        rc=124
+    else
+        wait "$APP_PID"
+        rc=$?
+    fi
+
+    mkdir -p "$TRACE_DIR"
+    rsync -a --prune-empty-dirs --compare-dest="$PROBLEM/" "$WORK_DIR/" "$TRACE_DIR/"
+    diff -ru --exclude=".git" "$PROBLEM/" "$WORK_DIR/" > "$TRACE_DIR/changed_diff.txt" 2>/dev/null || true
+
+    if [ "$rc" -eq 124 ]; then
+        echo "[solve] TIMEOUT (${kill_reason:-external}): $PROBLEM_NAME | round: $ROUND -- partial output evacuated to $TRACE_DIR, skipping measure" >&2
+        touch "$TRACE_DIR/.solve_timeout"
+    fi
+    return "$rc"
 }
 
 measure_job() {
@@ -148,6 +225,12 @@ measure_job() {
     local WORK_DIR;  WORK_DIR="$(job_workdir "$MODEL_TAG" "$ROUND" "$PROBLEM_NAME")"
     local SWEHOME;   SWEHOME="$(job_home "$MODEL_TAG" "$ROUND" "$PROBLEM_NAME")"
     local TRACE_DIR; TRACE_DIR="$(job_tracedir "$MODEL_TAG" "$ROUND" "$PROBLEM_NAME")"
+
+    if [ -f "$TRACE_DIR/.solve_timeout" ]; then
+        echo "[measure] SKIP $PROBLEM_NAME | round: $ROUND -- solve phase timed out, no complete solution to measure" >&2
+        rm -rf "$WORK_DIR" "$SWEHOME"
+        return 0
+    fi
 
     echo "[measure] problem: $PROBLEM_NAME | agent: $AGENT | model: $MODEL | round: $ROUND"
 
@@ -166,26 +249,36 @@ measure_job() {
 
     (
         flock -x 200
-        apptainer exec --cleanenv "${NV_FLAG[@]}" \
+        timeout "$EVAL_MEASURE_TIMEOUT" apptainer exec --cleanenv --pid "${NV_FLAG[@]}" \
             --env "EVAL_AGENT=$AGENT" \
             --env "EVAL_MODEL=$MODEL" \
             --env "EVAL_ROUND=$ROUND" \
             --env "EVAL_SIZE=$EVAL_SIZE" \
             --env "EVAL_VARIANT=$EVAL_VARIANT" \
+            --env "EVAL_REQUIRE_GPU=${EVAL_REQUIRE_GPU:-0}" \
             --bind "$WORK_DIR:/problem" \
             --bind "$MEASURE_SCRIPT:/measure.sh:ro" \
             "${DATA_BIND[@]}" \
             "${GRADE_BIND[@]}" \
             "$AGENT_SIF" /bin/bash -l /measure.sh /problem
     ) 200>"$MEASURE_LOCK"
+    local rc=$?
 
     mkdir -p "$TRACE_DIR"
     rsync -a --prune-empty-dirs --compare-dest="$PROBLEM/" "$WORK_DIR/" "$TRACE_DIR/"
     diff -ru --exclude=".git" "$PROBLEM/" "$WORK_DIR/" > "$TRACE_DIR/changed_diff.txt" 2>/dev/null || true
 
+    if [ "$rc" -eq 124 ]; then
+        echo "[measure] TIMEOUT after ${EVAL_MEASURE_TIMEOUT}s: $PROBLEM_NAME | round: $ROUND -- solve output already evacuated at $TRACE_DIR (no .eval/facts.json); use scripts/remeasure.sh to retry measurement standalone" >&2
+        touch "$TRACE_DIR/.measure_timeout"
+    fi
+
     if [ ! -s "$TRACE_DIR/.eval/facts.json" ]; then
-        echo "ERROR: no .eval/facts.json in trace for ${PROBLEM_NAME} | ${MODEL} | round-${ROUND} — extraction produced no evidence. Aborting eval." >&2
-        exit 1
+        echo "ERROR: no .eval/facts.json in trace for ${PROBLEM_NAME} | ${MODEL} | round-${ROUND} — extraction produced no evidence." >&2
+        if [ "$rc" -ne 124 ]; then
+            rm -rf "$WORK_DIR" "$SWEHOME"
+            return 1
+        fi
     fi
     cat "$TRACE_DIR/changed_diff.txt" 2>/dev/null || true
 
@@ -211,9 +304,11 @@ for job in "${JOBS[@]}"; do
     measure_job "$MODEL" "$ROUND" "$PROBLEM_NAME"
 done
 
-if command -v python3 >/dev/null 2>&1; then
-    python3 "$ROOT/checks/check_pass.py" --traces "$TRACE_ROOT"
-    python3 "$ROOT/checks/trace_stats.py" --traces "$TRACE_ROOT"
+if [ "${EVAL_SKIP_CHECKS:-0}" = "1" ]; then
+    echo "EVAL_SKIP_CHECKS=1: skipping check_pass.py + trace_stats.py (caller runs them)."
+elif command -v python3 >/dev/null 2>&1; then
+    python3 "$ROOT/checks/check_pass.py" --traces "$TRACE_ROOT" --campaign "$DATE_TAG"
+    python3 "$ROOT/checks/trace_stats.py" --traces "$TRACE_ROOT" --campaign "$DATE_TAG"
 else
     echo "WARN: python3 not found on host — skipping pass checks. Run checks/check_pass.py + trace_stats.py manually." >&2
 fi

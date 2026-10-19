@@ -1,5 +1,5 @@
 #! /bin/bash
-# Phase 1 (SOLVE) — swe-mini agent. Mirror of agents/docker/pi/solve.sh; only
+# Phase 1 (SOLVE) — swe-mini agent. Mirror of agents/apptainer/pi/solve.sh; only
 # the agent-invocation block differs. Runs mini-SWE-agent against our
 # OpenAI-compatible gateway to produce code + solution.json + agent.traj.json.
 #
@@ -30,37 +30,34 @@ tree -a
 # Skip mini's first-run interactive setup wizard (no TTY in the container) —
 # we supply the model + key + base URL via env and -c overrides below.
 export MSWEA_CONFIGURED=true
-# EVAL_PROVIDER selects which providers.<name> block in /models.json supplies the
-# baseUrl + apiKey (default "local" = gateway; "llama" = the host endpoint).
-EVAL_PROVIDER="${EVAL_PROVIDER:-local}"
+# EVAL_PROVIDER names the providers.<name> block in /models.json (generated from
+# endpoints.yaml by scripts/lib/resolve_endpoint.py) that supplies baseUrl + apiKey.
+EVAL_PROVIDER="${EVAL_PROVIDER:?EVAL_PROVIDER is not set (run via scripts/run_eval.sh)}"
 export OPENAI_API_KEY="$(jq -r ".providers.${EVAL_PROVIDER}.apiKey" /models.json)"
 API_BASE="$(jq -r ".providers.${EVAL_PROVIDER}.baseUrl" /models.json)"
 
 # NOTE on max output tokens: we deliberately do NOT pass max_tokens here. pi's
-# per-model maxTokens in models.json (e.g. 262144 for Qwen3.6-35B-A3B) is pi's
-# internal "max output capability" and is *larger* than the model's
-# contextWindow (256000). Forwarding it to litellm as max_completion_tokens is
-# rejected by the server ("max_completion_tokens is too large: 262144. This
-# model supports at most 256000") and kills every request. The server's own cap
-# (= context window) is the correct ceiling, so we let it govern by omission.
+# per-model maxTokens in models.json can be larger than the model's contextWindow.
+# Forwarding it to litellm as max_completion_tokens is rejected by servers that
+# validate it ("max_completion_tokens is too large") and kills every request. The
+# server's own cap (= context window) is the correct ceiling, so we let it govern
+# by omission.
 #
-# Per-provider model_kwargs. The "llama" endpoint (host sglang) serves
-# Llama-3.3-70B, which — unlike the gateway models — needs its tool calls
-# pinned two ways, or mini's function-calling agent dies:
-#   1. Left to choose, it writes the call as a fenced ```json block inside
-#      `content` whenever it reasons first; sglang's parser (correctly) ignores
+# EVAL_TOOL_CHOICE_BASH=1 pins tool_choice to mini's only tool (`bash`). Some
+# models (seen with Llama-3.3-70B on SGLang) need it, or mini's function-calling
+# agent dies:
+#   1. Left to choose, the model writes the call as a fenced ```json block inside
+#      `content` whenever it reasons first; the server's parser (correctly) ignores
 #      that, so mini sees NO tool_calls and aborts (RepeatedFormatError).
 #   2. With a plain tool_choice=required it emits MULTIPLE tool_calls in one turn;
-#      sglang then rejects the follow-up ("This model only supports single
-#      tool-calls at once!") and mini crashes.
-# Pinning tool_choice to the named `bash` function (mini's only tool; task
-# completion is itself a `bash` echo) forces exactly ONE structured call per turn,
-# fixing both. Set via dotted `-c` leaves — the same mechanism that already deep-
-# merges api_base/custom_llm_provider into model_kwargs, so the nested tool_choice
-# dict lands without clobbering its siblings. Scoped to EVAL_PROVIDER=llama so the
-# gateway (Qwen) runs keep tool_choice=auto and stay comparable.
+#      the server then rejects the follow-up ("only supports single tool-calls at
+#      once") and mini crashes.
+# Pinning tool_choice to the named `bash` function forces exactly ONE structured
+# call per turn. Set via dotted `-c` leaves, which deep-merge into model_kwargs.
+# Off by default: the measured runs ran with tool_choice=auto (the earlier
+# `EVAL_PROVIDER=llama` match never fired for the provider names actually used).
 EXTRA_OPTS=()
-if [ "${EVAL_PROVIDER:-local}" = "llama" ]; then
+if [ "${EVAL_TOOL_CHOICE_BASH:-0}" = "1" ]; then
 	EXTRA_OPTS+=(-c "model.model_kwargs.tool_choice.type=function")
 	EXTRA_OPTS+=(-c "model.model_kwargs.tool_choice.function.name=bash")
 fi
@@ -74,6 +71,12 @@ fi
 # (host.sh: MINI_CONFIG=.../mini_textbased.yaml). Unset -> default toolcall path.
 if [ -n "${EVAL_MODEL_CLASS:-}" ]; then
 	EXTRA_OPTS+=(-c "model.model_class=$EVAL_MODEL_CLASS")
+fi
+
+# Optional step cap override (mini.yaml's default is 120). Used by smoke tests
+# to bound the interaction to a handful of turns without needing a full solve.
+if [ -n "${EVAL_STEP_LIMIT:-}" ]; then
+	EXTRA_OPTS+=(-c "agent.step_limit=$EVAL_STEP_LIMIT")
 fi
 
 # mini's default per-command timeout is 30s — far too short for CUDA builds —

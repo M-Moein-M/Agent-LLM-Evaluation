@@ -114,6 +114,7 @@ EFFORT_FLAG=()
 [ -n "$EVAL_EFFORT" ] && EFFORT_FLAG=(--effort "$EVAL_EFFORT")
 
 claude -p "$PROMPT" \
+    --model "$EVAL_MODEL" \
     --max-turns "$EVAL_MAX_TURNS" \
     "${EFFORT_FLAG[@]}" \
     --permission-mode bypassPermissions \

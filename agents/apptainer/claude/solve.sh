@@ -1,6 +1,6 @@
 #! /bin/bash
 # Phase 1 (SOLVE) — claude (Claude Code) agent. Mirror of
-# agents/docker/swe-mini/solve.sh; only the agent-invocation block differs.
+# agents/apptainer/swe-mini/solve.sh; only the agent-invocation block differs.
 # Runs Claude Code headless against our gateway (Anthropic protocol) to
 # produce code + solution.json + agent.stream.jsonl.
 #
@@ -38,12 +38,12 @@ rm -rf .github/
 # sends `Authorization: Bearer <key>`, which is what the gateway expects (the
 # pre-run curl probes in AGENT.md use the same Bearer scheme).
 # ---------------------------------------------------------------------------
-# EVAL_PROVIDER selects which providers.<name> block in /models.json supplies the
-# baseUrl + apiKey (default "local" = gateway; "llama" = the host endpoint).
-EVAL_PROVIDER="${EVAL_PROVIDER:-local}"
+# EVAL_PROVIDER names the providers.<name> block in /models.json (generated from
+# endpoints.yaml by scripts/lib/resolve_endpoint.py) that supplies baseUrl + apiKey.
+EVAL_PROVIDER="${EVAL_PROVIDER:?EVAL_PROVIDER is not set (run via scripts/run_eval.sh)}"
 KEY="$(jq -r ".providers.${EVAL_PROVIDER}.apiKey" /models.json)"
 BASE="$(jq -r ".providers.${EVAL_PROVIDER}.baseUrl" /models.json)"
-BASE="${BASE%/v1}"          # https://gateway.example.org/v1 -> .../llmgw
+BASE="${BASE%/v1}"          # https://host/api/v1 -> https://host/api
 
 export ANTHROPIC_BASE_URL="$BASE"
 export ANTHROPIC_AUTH_TOKEN="$KEY"
@@ -111,6 +111,16 @@ export CLAUDE_CODE_ATTRIBUTION_HEADER=0
 # silently summarizing to keep going. Keep CLAUDE_CODE_MAX_OUTPUT_TOKENS modest
 # (above) so this wall isn't hit prematurely by an oversized output reservation.
 export DISABLE_AUTO_COMPACT=1
+# Unified limits (2026-09-17): DISABLE_COMPACT also turns off reactive compaction
+# on a server prompt-too-long. The client blocks at (assumed 200K window - output
+# reserve - 3000) = ~177K for non-Anthropic models; the override raises that block
+# above any server window so the server's context 400 ends the round, like swe-mini.
+export DISABLE_COMPACT=1
+export CLAUDE_CODE_BLOCKING_LIMIT_OVERRIDE="${EVAL_CLAUDE_BLOCKING_LIMIT:-10000000}"
+# O3 (2026-09-18): no server output cap and fake streaming, so nothing arrives until a
+# reply is complete, and one reply can run up to the full window. The 10 min client
+# default would time out first and claude would retry (resample) the call.
+export API_TIMEOUT_MS="${EVAL_API_TIMEOUT_MS:-14400000}"
 # Skip the first-run onboarding wizard (no TTY in the container).
 mkdir -p ~/.claude
 printf '{"hasCompletedOnboarding": true}\n' > ~/.claude.json
@@ -132,10 +142,45 @@ tree -a
 EFFORT_FLAG=()
 [ -n "$EVAL_EFFORT" ] && EFFORT_FLAG=(--effort "$EVAL_EFFORT")
 
+# End watch (2026-09-24, same as kimi/solve.sh): if claude is still alive
+# END_GRACE_S after its final `result` event (for instance held by a background
+# Bash command), it is ended. The watch reads claude's stdout through a FIFO, so
+# text the agent writes into agent.stream.jsonl cannot trigger it. Processes left
+# behind die with the container (host.sh runs apptainer exec --pid).
+END_GRACE_S="${EVAL_END_GRACE_S:-60}"
+end_watch() {  # $1 agent pid, $2 jq condition on the agent's final event; stdin = agent stdout
+    jq -R --unbuffered -c "fromjson? | objects | select($2) | 1" 2>/dev/null | {
+        if read -r _; then
+            local i=0
+            while kill -0 "$1" 2>/dev/null && (( i++ < END_GRACE_S )); do sleep 1; done
+            if kill -0 "$1" 2>/dev/null; then
+                echo "$(date +%FT%T) agent alive ${END_GRACE_S}s after its final event, ending it" \
+                    >> "$PROBLEM_DIR/agent.end_watch.log"
+                kill -TERM "$1" 2>/dev/null || true
+                sleep 10
+                kill -KILL "$1" 2>/dev/null || true
+            fi
+        fi
+        cat > /dev/null
+    }
+}
+FIFO="$(mktemp -u /tmp/agent-stream.XXXXXX)"
+mkfifo "$FIFO"
 claude -p "$PROMPT" \
     --max-turns "$EVAL_MAX_TURNS" \
     "${EFFORT_FLAG[@]}" \
     --permission-mode bypassPermissions \
     --allowedTools "Read,Edit,Write,Bash" \
     --output-format stream-json --verbose \
-    > "$PROBLEM_DIR/agent.stream.jsonl" 2> "$PROBLEM_DIR/agent.stderr.log" || true
+    > "$FIFO" 2> "$PROBLEM_DIR/agent.stderr.log" &
+AGENT_PID=$!
+{ tee -p >(end_watch "$AGENT_PID" '.type == "result"') \
+    < "$FIFO" & echo $! > "$FIFO.tee"; wait; } > "$PROBLEM_DIR/agent.stream.jsonl" &
+READER_PID=$!
+wait "$AGENT_PID" || true
+# A leftover child can hold claude's stdout open, so tee may never see EOF. Let it
+# drain for up to 5 s, then stop it.
+for _ in 1 2 3 4 5; do kill -0 "$READER_PID" 2>/dev/null || break; sleep 1; done
+kill "$(cat "$FIFO.tee")" 2>/dev/null || true
+wait "$READER_PID" || true
+rm -f "$FIFO" "$FIFO.tee"

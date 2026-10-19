@@ -1,32 +1,24 @@
 #! /bin/bash -l
 
-# pi agent orchestrator — APPTAINER runtime (cluster / SLURM). Two-phase mirror
-# of agents/docker/pi/host.sh, adapted for Apptainer:
-#   * docker run --gpus all   ->  apptainer exec --nv
-#   * -e K=V / -v S:D[:ro]     ->  --env K=V / --bind S:D[:ro]
-#   * image build/inspect      ->  prebuilt .sif (built separately with fakeroot)
-#   * pi config (~/.pi/agent)  ->  per-job --home staging dir (Apptainer runs as
-#                                  YOU, HOME defaults to your real home, so we
-#                                  point HOME at a staging dir holding models.json)
-#   * trace extraction         ->  plain host-side rsync/diff. The Docker version
-#                                  did this inside a root container to dodge a
-#                                  WSL2 bind-mount readdir race + root-owned files;
-#                                  on a real Linux node Apptainer writes files as
-#                                  YOU and the FS view is coherent, so none of that
-#                                  is needed.
-#
-# The in-container scripts (solve.sh, measure.sh) are runtime-agnostic and reused
-# verbatim from agents/docker/pi/ — keep them as the single source of truth.
+# pi agent orchestrator (Apptainer, SLURM or a plain node). Two phases: parallel solve,
+# serial measure. The other agents' host.sh files mirror this one; keep shared logic in step.
+#   * the image is a prebuilt .sif (apptainer build --fakeroot ... agent.def)
+#   * pi reads ~/.pi/agent/models.json: Apptainer runs as YOU with your real HOME, so a
+#     per-job staging dir holding models.json is bound over /root (--home)
+#   * trace extraction is a plain host-side rsync/diff
+# The in-container scripts solve.sh (this dir) and agents/measure.sh run inside the container.
 
 AGENT="pi"
 ROOT="$(pwd)"
 PROBLEM_DIR="$ROOT/problems"
 TRACE_ROOT="$ROOT/traces"
 AGENT_SIF="${AGENT_SIF:-$ROOT/agents/apptainer/pi/agent.sif}"
-# Shared, runtime-agnostic in-container scripts (canonical copy under docker/).
-SOLVE_SCRIPT="$ROOT/agents/docker/pi/solve.sh"
+# In-container scripts, bound into the container.
+SOLVE_SCRIPT="$ROOT/agents/apptainer/pi/solve.sh"
 MEASURE_SCRIPT="$ROOT/agents/measure.sh"
-MODELS_CONFIG="${MODELS_CONFIG:-$ROOT/agents/apptainer/pi/models.json}"
+# Endpoint config: endpoints.yaml + .env -> .run/models.json, EVAL_PROVIDER, EVAL_MODELS
+# (scripts/lib/endpoint.sh). Skipped when MODELS_CONFIG is already set.
+. "$ROOT/scripts/lib/endpoint.sh" && resolve_endpoints "$ROOT" pi || exit 1
 EVAL_ROUNDS="${EVAL_ROUNDS:-20}"
 EVAL_PROBLEMS="${EVAL_PROBLEMS:-RabbitCT-LolaBunny}"
 EVAL_SIZE="${EVAL_SIZE:-256}"
@@ -78,7 +70,9 @@ EVAL_MEASURE_TIMEOUT="${EVAL_MEASURE_TIMEOUT:-1800}"
 # EVAL_MODELS they would all collapse into this one folder.
 EVAL_MODEL_TAG="${EVAL_MODEL_TAG:-}"
 
-DATE_TAG=$(date +%Y%m%d-%H%M%S)
+# EVAL_DATE_TAG / EVAL_ROUND_IDS: fixed campaign dir and round numbers, so one-round
+# calls from scripts/phase6/worker.py land in one campaign per cell.
+DATE_TAG="${EVAL_DATE_TAG:-$(date +%Y%m%d-%H%M%S)}"
 echo "ROOT directory was set to $ROOT"
 [[ -d "$PROBLEM_DIR" ]] || { echo "ERROR: Run from repo root. Missing $PROBLEM_DIR" >&2; exit 1; }
 
@@ -129,7 +123,7 @@ job_tracedir() { echo "$TRACE_ROOT/$3/$AGENT/$1/$DATE_TAG/round-$2"; }      # MO
 
 JOBS=()
 for MODEL in "${MODELS[@]}"; do
-    for ROUND in $(seq 1 "$EVAL_ROUNDS"); do
+    for ROUND in ${EVAL_ROUND_IDS:-$(seq 1 "$EVAL_ROUNDS")}; do
         for PROBLEM_NAME in "${PROBLEMS[@]}"; do
             if [[ ! -d "$PROBLEM_DIR/$PROBLEM_NAME" ]]; then
                 echo "Skipping missing problem: $PROBLEM_DIR/$PROBLEM_NAME" >&2
@@ -167,6 +161,12 @@ solve_job() {
     # home, so stage a clean HOME holding the config and bind it to /root.
     mkdir -p "$PIHOME/.pi/agent"
     cp "$MODELS_CONFIG" "$PIHOME/.pi/agent/models.json"
+    # Unified limits (2026-09-16): no compaction (settings-manager.ts compaction.enabled);
+    # a server context-overflow ends the run like swe-mini.
+    # O3 (2026-09-18): fake streaming sends nothing until a reply is complete. pi's HTTP idle
+    # timeout (default 5 min, http-dispatcher.ts) and SDK request timeout (sdk.ts, falls back
+    # to the idle value) would end long replies and pi would retry them. Both 4h.
+    echo '{"compaction": {"enabled": false}, "httpIdleTimeoutMs": 14400000, "retry": {"provider": {"timeoutMs": 14400000}}}' > "$PIHOME/.pi/agent/settings.json"
 
     local DATA_BIND=()
     if [[ -d "$DATA_ROOT/$PROBLEM_NAME/RabbitInput" ]]; then
@@ -175,7 +175,10 @@ solve_job() {
 
     local LOG_FILE="$WORK_DIR/agent.jsonl"
 
-    apptainer exec --cleanenv "${NV_FLAG[@]}" \
+    # --pid (2026-09-24): own PID namespace per round. Every process the agent started
+    # dies with the container, on a normal end and on a timeout kill (orphaned find
+    # after a kimi timeout), and an agent pkill cannot reach sibling rounds.
+    apptainer exec --cleanenv --pid "${NV_FLAG[@]}" \
         --home "$PIHOME:/root" \
         --env "EVAL_AGENT=$AGENT" \
         --env "EVAL_MODEL=$MODEL" \
@@ -283,12 +286,13 @@ measure_job() {
 
     (
         flock -x 200
-        timeout "$EVAL_MEASURE_TIMEOUT" apptainer exec --cleanenv "${NV_FLAG[@]}" \
+        timeout "$EVAL_MEASURE_TIMEOUT" apptainer exec --cleanenv --pid "${NV_FLAG[@]}" \
             --env "EVAL_AGENT=$AGENT" \
             --env "EVAL_MODEL=$MODEL" \
             --env "EVAL_ROUND=$ROUND" \
             --env "EVAL_SIZE=$EVAL_SIZE" \
             --env "EVAL_VARIANT=$EVAL_VARIANT" \
+            --env "EVAL_REQUIRE_GPU=${EVAL_REQUIRE_GPU:-0}" \
             --bind "$WORK_DIR:/problem" \
             --bind "$MEASURE_SCRIPT:/measure.sh:ro" \
             "${DATA_BIND[@]}" \
@@ -342,11 +346,13 @@ for job in "${JOBS[@]}"; do
 done
 
 # Host-side pass judgment (no GPU, re-runnable).
-if command -v python3 >/dev/null 2>&1; then
+if [ "${EVAL_SKIP_CHECKS:-0}" = "1" ]; then
+    echo "EVAL_SKIP_CHECKS=1: skipping check_pass.py + trace_stats.py (caller runs them)."
+elif command -v python3 >/dev/null 2>&1; then
     (
         flock -x 200
-        python3 "$ROOT/checks/check_pass.py" --traces "$TRACE_ROOT"
-        python3 "$ROOT/checks/trace_stats.py" --traces "$TRACE_ROOT"
+        python3 "$ROOT/checks/check_pass.py" --traces "$TRACE_ROOT" --campaign "$DATE_TAG"
+        python3 "$ROOT/checks/trace_stats.py" --traces "$TRACE_ROOT" --campaign "$DATE_TAG"
     ) 200>"$MEASURE_LOCK"
 else
     echo "WARN: python3 not found on host — skipping pass checks. Run checks/check_pass.py + trace_stats.py manually." >&2

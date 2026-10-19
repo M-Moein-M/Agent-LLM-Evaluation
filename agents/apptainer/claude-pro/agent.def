@@ -14,7 +14,7 @@ From: nvidia/cuda:12.4.1-devel-ubuntu22.04
 # The agent itself is Claude Code, installed via Anthropic's native installer
 # (standalone binary → /root/.local/bin/claude, no Node needed).
 #
-# Build (on a node with fakeroot — you have it):
+# Build (needs fakeroot):
 #   APPTAINER_CACHEDIR=$PWD/agents/apptainer/claude-pro/.cache \
 #   apptainer build --fakeroot agents/apptainer/claude-pro/agent.sif agents/apptainer/claude-pro/agent.def
 
@@ -40,7 +40,8 @@ From: nvidia/cuda:12.4.1-devel-ubuntu22.04
     # staging home OVER /root (that shadows claude → "command not found"); it
     # mounts the staging home at its own path instead. See host.sh.
     export HOME=/root
-    curl -fsSL https://claude.ai/install.sh | bash
+    # Pinned: results were measured with Claude Code 2.1.209.
+    curl -fsSL https://claude.ai/install.sh | bash -s 2.1.209
 
     # Nsight Systems CLI (nsys) for trustworthy external kernel timing in the
     # perf-grading path. The CUDA base repo does NOT carry the standalone CLI, so

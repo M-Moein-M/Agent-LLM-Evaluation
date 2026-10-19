@@ -1,7 +1,7 @@
 # claude-pro — Claude Code on a personal subscription
 
 Same agent as `agents/apptainer/claude/`, but authenticated with a **personal
-Claude subscription** (OAuth) against `api.anthropic.com` instead of the NHR
+Claude subscription** (OAuth) against `api.anthropic.com` instead of the
 gateway. It is a full fork so the gateway agent stays untouched.
 
 Everything lives in this directory — nothing is written to `$HOME`.

@@ -1,0 +1,64 @@
+Bootstrap: docker
+From: nvidia/cuda:12.4.1-devel-ubuntu22.04
+
+# Apptainer image for the kimi (Kimi Code CLI, Moonshot AI) agent. Mirrors the
+# claude / swe-mini defs (CUDA devel base + toolchain) so the cluster runs the
+# exact same build/run/perf toolchain in the measure phase.
+#
+# The agent itself is Kimi Code, installed via Moonshot's native installer
+# (standalone binary, no Node needed -> $KIMI_INSTALL_DIR/bin/kimi). Installing
+# with KIMI_INSTALL_DIR=/usr/local puts the binary at /usr/local/bin/kimi,
+# OUTSIDE any per-job staging HOME — unlike claude's /root/.local install, this
+# means host.sh can safely bind the staging home straight over /root (mirrors
+# swe-mini's `mini`, not claude's own-path workaround). At solve time it talks
+# the OpenAI-compatible protocol to the configured endpoint (see solve.sh).
+#
+# Build (needs network; fakeroot):
+#   APPTAINER_CACHEDIR=$TMPDIR/apptainer-cache \
+#   apptainer build --fakeroot agents/apptainer/kimi/agent.sif agents/apptainer/kimi/agent.def
+# Then host.sh runs make_patched_kimi.sh once (-> .run/kimi-patched) and bind-mounts it over
+# /usr/local/bin/kimi: the stock binary plus two byte edits, see that script.
+
+%post
+    apt-get update -y && apt-get install -y --no-install-recommends \
+        git \
+        curl \
+        wget \
+        tree \
+        ca-certificates \
+        build-essential \
+        libssl-dev \
+        libffi-dev \
+        libnuma-dev \
+        rsync \
+        jq \
+        && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+    # Kimi Code CLI — native standalone binary installer (no Node.js required).
+    # KIMI_INSTALL_DIR controls the install root; the script places the binary
+    # at $KIMI_INSTALL_DIR/bin/kimi, so /usr/local -> /usr/local/bin/kimi.
+    export HOME=/root
+    export KIMI_INSTALL_DIR=/usr/local
+    # Pinned: results were measured with 0.31.0 and make_patched_kimi.sh asserts that build.
+    export KIMI_VERSION=0.31.0
+    curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash
+
+    # Nsight Systems CLI (nsys) for trustworthy external kernel timing in the
+    # perf-grading path. The CUDA base repo does NOT carry the standalone CLI, so
+    # add NVIDIA's devtools apt repo (which does). ISOLATED + non-fatal on purpose: a
+    # hiccup here must not poison the agent install above, and the image still
+    # builds if the download is unavailable (check falls back to cudaEvent timing).
+    ( apt-get update -y \
+      && apt-get install -y --no-install-recommends gnupg wget ca-certificates \
+      && ARCH="$(dpkg --print-architecture)" \
+      && wget -qO- "https://developer.download.nvidia.com/devtools/repos/ubuntu2204/${ARCH}/nvidia.pub" \
+         | gpg --dearmor -o /usr/share/keyrings/nvidia-devtools.gpg \
+      && echo "deb [signed-by=/usr/share/keyrings/nvidia-devtools.gpg] https://developer.download.nvidia.com/devtools/repos/ubuntu2204/${ARCH}/ /" \
+         > /etc/apt/sources.list.d/nvidia-devtools.list \
+      && apt-get update -y \
+      && apt-get install -y --no-install-recommends nsight-systems-cli ) \
+        || echo "WARNING: nsight-systems-cli not installed — perf grading will fall back to cudaEvent timing"
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+%environment
+    export PATH=/usr/local/bin:$PATH

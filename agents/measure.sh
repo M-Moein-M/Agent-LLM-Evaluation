@@ -1,11 +1,9 @@
 #! /bin/bash
 # Phase 2 (MEASURE): replay the agent's build/run and capture graded evidence.
 #
-# ONE canonical copy, shared by every agent and both runtimes — every host.sh
+# ONE canonical copy, shared by every agent — every host.sh
 # binds this same file to /measure.sh. It is agent-agnostic by construction: it
-# reads solution.json, replays it, and records raw receipts. (It previously
-# existed as two near-identical copies under agents/docker/{pi,swe-mini}/, which
-# meant every fix had to be made twice.)
+# reads solution.json, replays it, and records raw receipts.
 #
 # This is the CONTENTION-INTOLERANT half of the old guest.sh. It must run
 # SERIALLY, so the wall-clock timing and the 250ms gpu_usage.csv sampling
@@ -39,6 +37,14 @@ DATE_TAG=$(date +%Y%m%d-%H%M%S)
 # every trace rather than relying on whoever submitted the job to remember.
 EVAL_NODE="${SLURMD_NODENAME:-$(hostname -s 2>/dev/null || hostname)}"
 
+# EVAL_REQUIRE_GPU=1 (Phase 6 worker): without a visible GPU the replay would fail
+# and be recorded as a real run_error. Exit before writing any facts instead, so
+# the round stays unmeasured and is measured again later.
+if [[ "${EVAL_REQUIRE_GPU:-0}" == "1" ]] && ! nvidia-smi -L 2>/dev/null | grep -q "^GPU"; then
+	echo "ERROR: EVAL_REQUIRE_GPU=1 but no GPU is visible in the container, no facts written" >&2
+	exit 3
+fi
+
 cd "$PROBLEM_DIR"
 
 # ---------------------------------------------------------------------------
@@ -47,6 +53,59 @@ cd "$PROBLEM_DIR"
 SOLUTION_JSON="$PROBLEM_DIR/solution.json"
 EVAL_DIR="$PROBLEM_DIR/.eval"
 mkdir -p "$EVAL_DIR"
+
+# ---------------------------------------------------------------------------
+# Optional perf grading: harness-owned bench + cuBLAS reference, timed by nsys.
+# Runs ONLY when a grade bench is bound in for this problem (host.sh binds
+# checks/<problem>/bench.cu -> /grade/bench.cu). Other problems and the
+# correctness path above are untouched. Emits raw evidence to .eval/; the
+# host-side check computes the agent-vs-cuBLAS kernel-time RATIO — no
+# operation-count assumption, self-calibrating to whatever GPU runs it.
+#
+# The paired run (.eval/perf_paired.log) times cuBLAS before and after the
+# agent kernel in one process, so a disturbed measurement shows up as a spread
+# in the cuBLAS segments. The host-side check prefers it when present.
+# $1 = log that receives the bench build output.
+# ---------------------------------------------------------------------------
+perf_build() {
+	{
+		echo "== perf grading: build gemm_bench from harness bench + agent kernel =="
+		# Agent kernel sources = every src/*.cu WITHOUT its own int main, so the
+		# agent stays free to split the kernel across files; the bench owns main().
+		KSRCS=$(grep -L 'int main' src/*.cu 2>/dev/null | tr '\n' ' ')
+		echo "agent kernel sources: $KSRCS"
+		set -x
+		# -arch=sm_86 targets the A40 (Ampere GA102) explicitly — deterministic
+		# and independent of build-time GPU detection (override BENCH_ARCH for
+		# other GPUs).
+		nvcc -O3 -std=c++14 -arch="${BENCH_ARCH:-sm_86}" /grade/bench.cu $KSRCS \
+			-I src -o gemm_bench -lcublas
+		set +x
+	} > "$1" 2>&1
+}
+
+perf_paired() {
+	# Cap at 20 min: 9 segments of 55 launches. A kernel at 1% of cuBLAS needs
+	# about 6 min.
+	timeout 1200 ./gemm_bench paired >> "$EVAL_DIR/perf_paired.log" 2>&1 || true
+}
+
+# EVAL_PERF_ONLY=1 (scripts/remeasure.sh --perf-only): only the paired run, for
+# rounds that are already measured. perf.log, the nsys files and facts.json are
+# not touched.
+if [[ "${EVAL_PERF_ONLY:-0}" == "1" ]]; then
+	if [ -f /grade/bench.cu ] && command -v nvcc >/dev/null 2>&1; then
+		rm -f gemm_bench
+		# "|| true": a failed bench build must reach the message below.
+		perf_build "$EVAL_DIR/perf_paired.log" || true
+		if [ -x ./gemm_bench ]; then
+			perf_paired
+		else
+			echo "gemm_bench did not build — no paired perf result" >> "$EVAL_DIR/perf_paired.log"
+		fi
+	fi
+	exit 0
+fi
 
 # ---------------------------------------------------------------------------
 # facts.json writers (raw receipts only — no interpretation).
@@ -81,8 +140,13 @@ write_result() {
 		> "$EVAL_DIR/facts.json"
 }
 
+# $1 is a STABLE SLUG, $2 the prose. The slug is what the host-side reports key
+# on (checks/failure_class.py -> the round's fail_class), so it must not be
+# reworded casually; the prose is free text for a human reading facts.json.
+# Older traces carry only the prose and are mapped back by FACTS_FAILURE_CODE.
 write_fail_result() {
-	local reason="$1"
+	local code="$1"
+	local reason="$2"
 	jq -n \
 		--arg model "$EVAL_MODEL" \
 		--arg agent "$EVAL_AGENT" \
@@ -91,9 +155,11 @@ write_fail_result() {
 		--argjson size "$EVAL_SIZE" \
 		--arg variant "$EVAL_VARIANT" \
 		--arg node "$EVAL_NODE" \
+		--arg code "$code" \
 		--arg reason "$reason" \
 		'{model:$model, agent:$agent, round:$round, date:$date, size:$size,
-		  variant:$variant, node:$node, source:"solution.json", failure_reason:$reason,
+		  variant:$variant, node:$node, source:"solution.json",
+		  failure_code:$code, failure_reason:$reason,
 		  build:{status:1, start:0, end:0},
 		  run:{status:1, start:0, end:0}}' \
 		> "$EVAL_DIR/facts.json"
@@ -101,7 +167,7 @@ write_fail_result() {
 
 if [ ! -f "$SOLUTION_JSON" ]; then
 	echo "WARN: No solution.json — writing FAIL result" >&2
-	write_fail_result "No solution.json produced"
+	write_fail_result no_solution "No solution.json produced"
 	exit 0
 fi
 
@@ -111,7 +177,7 @@ VARIANT=$(jq -r '.variant_name // empty' "$SOLUTION_JSON" 2>/dev/null) || true
 
 if [ -z "$BUILD_CMD" ] || [ -z "$RUN_CMD" ]; then
 	echo "WARN: solution.json missing build/run — writing FAIL result" >&2
-	write_fail_result "Incomplete solution.json (missing build/run)"
+	write_fail_result incomplete_solution "Incomplete solution.json (missing build/run)"
 	exit 0
 fi
 
@@ -202,29 +268,11 @@ fi
 write_result
 
 # ---------------------------------------------------------------------------
-# Optional perf grading: harness-owned bench + cuBLAS reference, timed by nsys.
-# Runs ONLY when a grade bench is bound in for this problem (host.sh binds
-# checks/<problem>/bench.cu -> /grade/bench.cu). Other problems and the
-# correctness path above are untouched. Emits raw evidence to .eval/; the
-# host-side check computes the agent-vs-cuBLAS kernel-time RATIO — no
-# operation-count assumption, self-calibrating to whatever GPU runs it.
+# Optional perf grading (perf_build / perf_paired are defined near the top).
 # ---------------------------------------------------------------------------
 if [ -f /grade/bench.cu ] && command -v nvcc >/dev/null 2>&1; then
 	PERF_LOG="$EVAL_DIR/perf.log"
-	{
-		echo "== perf grading: build gemm_bench from harness bench + agent kernel =="
-		# Agent kernel sources = every src/*.cu WITHOUT its own int main, so the
-		# agent stays free to split the kernel across files; the bench owns main().
-		KSRCS=$(grep -L 'int main' src/*.cu 2>/dev/null | tr '\n' ' ')
-		echo "agent kernel sources: $KSRCS"
-		set -x
-		# -arch=sm_86 targets the A40 (Ampere GA102) explicitly — deterministic
-		# and independent of build-time GPU detection (override BENCH_ARCH for
-		# other GPUs).
-		nvcc -O3 -std=c++14 -arch="${BENCH_ARCH:-sm_86}" /grade/bench.cu $KSRCS \
-			-I src -o gemm_bench -lcublas
-		set +x
-	} > "$PERF_LOG" 2>&1
+	perf_build "$PERF_LOG"
 	if [ -x ./gemm_bench ]; then
 		if command -v nsys >/dev/null 2>&1; then
 			# --capture-range=cudaProfilerApi: the report holds ONLY the timed
@@ -243,6 +291,8 @@ if [ -f /grade/bench.cu ] && command -v nvcc >/dev/null 2>&1; then
 			./gemm_bench agent  >> "$PERF_LOG" 2>&1 || true
 			./gemm_bench cublas >> "$PERF_LOG" 2>&1 || true
 		fi
+		: > "$EVAL_DIR/perf_paired.log"
+		perf_paired
 	else
 		echo "gemm_bench did not build — no perf score (correctness still graded)" >> "$PERF_LOG"
 	fi
