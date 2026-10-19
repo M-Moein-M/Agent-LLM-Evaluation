@@ -30,4 +30,4 @@ endif
 
 
 INCLUDES = -I../includes
-#LIBS     = -L/home/<group>/<user>/new-likwid/mic/lib/ -llikwid
+#LIBS     = -L/path/to/likwid/lib/ -llikwid
