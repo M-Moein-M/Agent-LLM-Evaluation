@@ -217,6 +217,37 @@ table.runs tr.dim:hover td { opacity: 1; }
 .campaign-head .model { font-weight: 600; font-size: 14px; }
 .campaign-head .ts { color: var(--fg-faint); font-size: 12px; font-family: var(--mono); }
 
+/* agent view: one wave = one submission (model + timestamp) across every
+   problem it ran. The left rail is what makes the wave read as one block, so
+   the problem sub-heads inside it don't look like top-level sections. */
+.wave {
+  border-left: 2px solid var(--border);
+  padding-left: 14px;
+  margin: 26px 0 30px;
+}
+.wave-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 0 4px -16px;
+  flex-wrap: wrap;
+}
+.wave-head .model { font-weight: 600; font-size: 15px; }
+.wave-head .ts { color: var(--fg-faint); font-size: 12px; font-family: var(--mono); }
+.wave-head .count { color: var(--fg-faint); font-size: 12px; margin-left: auto; }
+
+.wave-prob {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 16px 0 6px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-soft);
+}
+/* the first problem sits right under the wave head, so it needs no divider */
+.wave-head + .wave-prob { border-top: 0; padding-top: 0; margin-top: 10px; }
+.wave-prob a { font-weight: 600; font-size: 13.5px; }
+
 /* ---------------------------------------------------------------- chips */
 
 .chip {
@@ -232,6 +263,7 @@ table.runs tr.dim:hover td { opacity: 1; }
 .chip.fail { color: var(--red);   background: color-mix(in srgb, var(--red) 14%, transparent); }
 .chip.none { color: var(--fg-faint); background: var(--bg-elev2); }
 .chip.soft { color: var(--fg-dim); background: var(--bg-elev2); font-family: var(--mono); }
+.chip.warn { color: var(--amber); background: color-mix(in srgb, var(--amber) 14%, transparent); font-family: var(--mono); }
 
 /* filter toggles */
 .filters { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 14px 0 4px; }
@@ -262,6 +294,8 @@ table.runs tr.dim:hover td { opacity: 1; }
 .kv { display: flex; flex-wrap: wrap; gap: 5px 20px; font-size: 12.5px; color: var(--fg-dim); }
 .kv b { color: var(--fg-faint); font-weight: 500; }
 .kv code { font-family: var(--mono); color: var(--fg); font-size: 12px; }
+/* the "(N with text)" aside on the turns line -- secondary to the count itself */
+.kv .dim { color: var(--fg-faint); }
 
 /* collapsible side panels */
 details.panel {
@@ -320,6 +354,9 @@ details.panel .body { padding: 0 14px 12px; }
 .ev.tool_call::before   { border-color: var(--green); }
 .ev.tool_call.err::before { border-color: var(--red); }
 .ev.log::before         { border-color: var(--amber); }
+.ev.run_end::before     { border-color: var(--red); background: var(--red); }
+.ev.run_end.sev-ok::before   { border-color: var(--green); background: var(--green); }
+.ev.run_end.sev-warn::before { border-color: var(--amber); background: var(--amber); }
 
 .ev-box {
   background: var(--bg-elev);
@@ -363,6 +400,37 @@ details.panel .body { padding: 0 14px 12px; }
   border-bottom: 1px solid var(--border-soft);
 }
 .callline .dim { color: var(--fg-faint); }
+
+/* the terminal "why this run stopped" node — the trace's last word, so it is
+   the one event that states itself in full instead of behind a disclosure */
+.ev.run_end .ev-box { border-color: color-mix(in srgb, var(--red) 55%, var(--border)); }
+.ev.run_end.sev-ok .ev-box { border-color: color-mix(in srgb, var(--green) 45%, var(--border)); }
+.ev.run_end.sev-warn .ev-box { border-color: color-mix(in srgb, var(--amber) 45%, var(--border)); }
+.ev.run_end .ev-head .who { color: var(--red); }
+.ev.run_end.sev-ok .ev-head .who { color: var(--green); }
+.ev.run_end.sev-warn .ev-head .who { color: var(--amber); }
+.endline {
+  padding: 11px 13px;
+  font-size: 13.5px;
+  font-weight: 560;
+  color: var(--fg);
+  word-break: break-word;
+}
+
+/* how far past the limit the request was: the filled part is what fit */
+.overbar {
+  position: relative;
+  height: 6px;
+  margin: 0 13px 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--red) 55%, transparent);
+  overflow: hidden;
+}
+.overbar .fill {
+  display: block;
+  height: 100%;
+  background: var(--fg-dim);
+}
 
 /* thinking is de-emphasised and collapsed by default */
 .ev.thinking .ev-body { color: var(--fg-dim); font-size: 13.5px; }

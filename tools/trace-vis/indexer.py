@@ -15,6 +15,9 @@ import threading
 import time
 
 import curation
+# the shared failure vocabulary (checks/failure_class.py); parsers.py owns
+# the import shim that finds it both in the image and in the source tree
+from parsers import fc
 
 ROUND_PREFIX = "round-"
 
@@ -45,15 +48,32 @@ def _fail_stage(stages):
     return None
 
 
+def _fail_class(d, stages):
+    """The fine-grained reason this round failed, with a label to show.
+
+    collect_results.py already computed it into runs.jsonl (one vocabulary,
+    shared with the timeline's run_end node — see checks/failure_class.py). A
+    row written before that field existed falls back to the stage name, which
+    is the coarse answer this replaced: "build" for a round whose agent never
+    got as far as a compiler.
+    """
+    klass = d.get("fail_class") or (None if d.get("passed") else _fail_stage(stages))
+    if not klass:
+        return None, None, None
+    return klass, fc.FAIL_CLASS_LABEL.get(klass, klass), d.get("fail_detail")
+
+
 class TraceIndex:
     def __init__(self, workspace, traces_dirname="traces", runs_jsonl=None):
         self.workspace = os.path.abspath(workspace)
         self.traces_root = os.path.join(self.workspace, traces_dirname)
-        self.runs_jsonl = runs_jsonl or os.path.join(self.workspace, "results", "runs.jsonl")
+        self.runs_jsonl = (os.path.join(self.workspace, runs_jsonl) if runs_jsonl
+                           else os.path.join(self.workspace, "results", "runs.jsonl"))
         self._lock = threading.Lock()
         self.runs = {}          # run_id -> run dict
         self.by_problem = {}    # problem -> agent -> [run_id]
         self.by_agent = {}      # agent -> problem -> [run_id]
+        self.by_model = {}      # model -> agent -> problem -> [run_id]
         self.campaigns = {}     # campaign key -> meta
         self.curated = set()    # run_ids in the "important runs" scope (curation.py)
         self.built_at = None
@@ -118,6 +138,7 @@ class TraceIndex:
                     round_rel = os.path.join(campaign, f"{ROUND_PREFIX}{rnd}")
 
                 stages = d.get("stages") or []
+                klass, label, detail = _fail_class(d, stages)
                 rid = _run_id(problem, agent, model, campaign_ts, rnd)
                 yield {
                     "run_id": rid,
@@ -131,6 +152,10 @@ class TraceIndex:
                     "round_rel": round_rel,
                     "passed": bool(d.get("passed")),
                     "failed_stage": _fail_stage(stages),
+                    "fail_class": klass,
+                    "fail_label": label,
+                    "fail_detail": detail,
+                    "end_reason": d.get("end_reason"),
                     "metric": _metric_from_stages(stages),
                     "stages": stages,
                     "gpu": d.get("gpu"),
@@ -173,7 +198,10 @@ class TraceIndex:
                                 "campaign_rel": os.path.relpath(tpath, self.workspace),
                                 "round": rnd,
                                 "round_rel": os.path.relpath(os.path.join(tpath, rd), self.workspace),
-                                "passed": None, "failed_stage": None, "metric": None,
+                                "passed": None, "failed_stage": None,
+                                "fail_class": None, "fail_label": None,
+                                "fail_detail": None, "end_reason": None,
+                                "metric": None,
                                 "stages": [], "gpu": None, "turns": None, "steps": None,
                                 "total_input": None, "total_output": None,
                                 "total_tokens": None, "peak_context": None,
@@ -192,10 +220,14 @@ class TraceIndex:
             return []
 
     def _build_pivots(self):
-        by_problem, by_agent, campaigns = {}, {}, {}
+        by_problem, by_agent, by_model, campaigns = {}, {}, {}, {}
         for rid, r in self.runs.items():
             by_problem.setdefault(r["problem"], {}).setdefault(r["agent"], []).append(rid)
             by_agent.setdefault(r["agent"], {}).setdefault(r["problem"], []).append(rid)
+            # one level deeper than the other two: a model is run by several
+            # agents, and comparing them is the whole point of the model view
+            by_model.setdefault(r["model"], {}).setdefault(
+                r["agent"], {}).setdefault(r["problem"], []).append(rid)
             ckey = "/".join((r["problem"], r["agent"], r["model"], r["campaign"]))
             c = campaigns.setdefault(ckey, {
                 "key": ckey, "problem": r["problem"], "agent": r["agent"],
@@ -211,10 +243,15 @@ class TraceIndex:
         for d in by_agent.values():
             for k in d:
                 d[k].sort(key=sort_key)
+        for agents in by_model.values():
+            for d in agents.values():
+                for k in d:
+                    d[k].sort(key=sort_key)
         for c in campaigns.values():
             c["run_ids"].sort(key=sort_key)
             c.update(self._tally(c["run_ids"]))
-        self.by_problem, self.by_agent, self.campaigns = by_problem, by_agent, campaigns
+        self.by_problem, self.by_agent = by_problem, by_agent
+        self.by_model, self.campaigns = by_model, campaigns
 
     # ---------------------------------------------------------- queries ---
 
@@ -260,8 +297,17 @@ class TraceIndex:
                 continue
             probs = sorted({self.runs[rid]["problem"] for rid in ids})
             agents.append(dict(name=a, problems=probs, **self._tally(ids)))
+        models = []
+        for m in sorted(self.by_model):
+            ids = self._scoped([rid for a in self.by_model[m].values()
+                                for p in a.values() for rid in p], scope)
+            if not ids:
+                continue
+            models.append(dict(name=m,
+                               agents=sorted({self.runs[rid]["agent"] for rid in ids}),
+                               problems=sorted({self.runs[rid]["problem"] for rid in ids}),
+                               **self._tally(ids)))
         ids = self._scoped(self.runs, scope)
-        models = sorted({self.runs[rid]["model"] for rid in ids})
         n_campaigns = len({self._campaign_key(rid) for rid in ids})
         return {
             "problems": problems,
@@ -311,6 +357,34 @@ class TraceIndex:
         return dict(agent=agent, problems=problems, scope=self.scope_info(scope),
                     **self._tally(ids))
 
+    def model_view(self, model, scope=curation.DEFAULT_SCOPE):
+        """model -> its agents -> their problems -> campaigns.
+
+        The extra agent level is what makes this view worth having: the same
+        weights behind pi, swe-mini and claude is the comparison you want, and
+        nesting problems under each agent keeps the campaign waves intact.
+        """
+        if model not in self.by_model:
+            return None
+        agents = []
+        for agent in sorted(self.by_model[model]):
+            problems = []
+            for problem in sorted(self.by_model[model][agent]):
+                ids = self._scoped(self.by_model[model][agent][problem], scope)
+                if not ids:
+                    continue
+                problems.append(dict(name=problem, **self._tally(ids),
+                                     campaigns=self._campaigns_for(ids)))
+            if not problems:
+                continue
+            ids = self._scoped([rid for p in self.by_model[model][agent].values()
+                                for rid in p], scope)
+            agents.append(dict(name=agent, problems=problems, **self._tally(ids)))
+        ids = self._scoped([rid for a in self.by_model[model].values()
+                            for p in a.values() for rid in p], scope)
+        return dict(model=model, agents=agents, scope=self.scope_info(scope),
+                    **self._tally(ids))
+
     def _campaign_key(self, run_id):
         r = self.runs[run_id]
         return "/".join((r["problem"], r["agent"], r["model"], r["campaign"]))
@@ -341,8 +415,10 @@ class TraceIndex:
     def run_brief(self, run_id):
         r = self.runs[run_id]
         d = {k: r[k] for k in ("run_id", "problem", "agent", "model", "campaign",
-                               "round", "passed", "failed_stage", "metric",
-                               "turns", "steps", "total_tokens", "has_eval")}
+                               "round", "passed", "failed_stage", "fail_class",
+                               "fail_label", "fail_detail", "end_reason",
+                               "metric", "turns", "steps", "total_tokens",
+                               "has_eval")}
         d["curated"] = run_id in self.curated
         return d
 

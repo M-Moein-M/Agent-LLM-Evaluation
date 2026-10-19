@@ -79,8 +79,8 @@ class TraceCache:
 
 
 class App:
-    def __init__(self, workspace, scan_fs=False):
-        self.index = TraceIndex(workspace).build(scan_fs=scan_fs)
+    def __init__(self, workspace, scan_fs=False, traces="traces", runs=None):
+        self.index = TraceIndex(workspace, traces_dirname=traces, runs_jsonl=runs).build(scan_fs=scan_fs)
         self.cache = TraceCache()
         self.workspace = os.path.abspath(workspace)
 
@@ -118,6 +118,11 @@ class App:
         name = (q.get("name") or [None])[0]
         view = self.index.agent_view(name, self._scope(q)) if name else None
         return view or (404, f"unknown agent {name}")
+
+    def api_model(self, q):
+        name = (q.get("name") or [None])[0]
+        view = self.index.model_view(name, self._scope(q)) if name else None
+        return view or (404, f"unknown model {name}")
 
     def api_run(self, q):
         run, path, err = self._run_dir(q)
@@ -186,6 +191,7 @@ ROUTES = {
     "/api/summary": "api_summary",
     "/api/problem": "api_problem",
     "/api/agent": "api_agent",
+    "/api/model": "api_model",
     "/api/run": "api_run",
     "/api/trace": "api_trace",
     "/api/file": "api_file",
@@ -262,6 +268,10 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="Serve the agent trace viewer.")
     ap.add_argument("--workspace", default=os.environ.get("TRACE_VIS_WORKSPACE", "/workspace"),
                     help="repo root containing traces/ and results/ (default: /workspace)")
+    ap.add_argument("--traces", default=os.environ.get("TRACE_VIS_TRACES", "traces"),
+                    help="traces directory, absolute or relative to --workspace (default: traces)")
+    ap.add_argument("--runs", default=os.environ.get("TRACE_VIS_RUNS"),
+                    help="runs.jsonl from tools/collect_results.py (default: <workspace>/results/runs.jsonl)")
     ap.add_argument("--host", default=os.environ.get("TRACE_VIS_HOST", "127.0.0.1"))
     ap.add_argument("--port", type=int, default=int(os.environ.get("TRACE_VIS_PORT", "8080")))
     ap.add_argument("--scan-fs", action="store_true",
@@ -277,17 +287,17 @@ def main(argv=None):
         sys.exit(f"error: no index.html under {STATIC_DIR} — pass --static or run build_web.py")
 
     ws = os.path.abspath(args.workspace)
-    if not os.path.isdir(os.path.join(ws, "traces")):
-        sys.exit(f"error: {ws}/traces not found — pass --workspace or bind it into the container")
+    if not os.path.isdir(os.path.join(ws, args.traces)):
+        sys.exit(f"error: {os.path.join(ws, args.traces)} not found — pass --workspace/--traces or bind it into the container")
 
     print(f"trace-vis: indexing {ws} ...", file=sys.stderr)
-    app = App(ws, scan_fs=args.scan_fs)
+    app = App(ws, scan_fs=args.scan_fs, traces=args.traces, runs=args.runs)
     t = app.index.summary("all")["totals"]
     print(f"trace-vis: {t['n_runs']} runs, {t['n_campaigns']} campaigns, "
           f"{t['n_problems']} problems, {t['n_agents']} agents, {t['n_models']} models",
           file=sys.stderr)
-    print(f"trace-vis: {len(app.index.curated)} of them are in the default "
-          f"'important runs' scope (latest campaign per pairing; see curation.py)",
+    print(f"trace-vis: {len(app.index.curated)} of them are in the optional "
+          f"'important runs' scope (TRACE_VIS_SCOPE=curated; see curation.py)",
           file=sys.stderr)
     for w in app.index.warnings[:5]:
         print(f"trace-vis: warning: {w}", file=sys.stderr)

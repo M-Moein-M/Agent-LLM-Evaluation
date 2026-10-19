@@ -1,9 +1,9 @@
 """The "important runs" selection — the same set of rounds that
-`slides/figures/05_pass_matrix.png` is built from.
+`reference-results/figures/05_pass_matrix.png` is built from.
 
 The viewer defaults to this scope; `scope=all` in the API turns it off. The
-rules are a port of `slides/make_figures.py::load_latest_all()` (plus
-`EXCLUDE_CAMPAIGNS`/`_campaign_key` from `checks/report_tables.py`), reproduced
+rules are a port of `reference-results/analysis/make_figures.py::load_latest_all()` (plus
+`EXCLUDE_CAMPAIGNS`/`_campaign_key` from `reference-results/analysis/report_tables.py`), reproduced
 here rather than imported because the image must build and selftest with no
 workspace bound, and because `make_figures.py` pulls in matplotlib/numpy.
 `selftest.py --workspace` diffs the exclusion set against the workspace copy so
@@ -42,6 +42,13 @@ EXCLUDE_CAMPAIGNS = {
     "RabbitCT-LolaOMP/claude-pro/claude-opus-4-8/20260716-012633",
     # tiled-gemm: 040522 r5 = session-limit build-fail; superseded by 20260716-122816.
     "tiled-gemm/claude-pro/claude-opus-4-8/20260716-040522",
+    # pi+DeepSeek-V4-Flash-0731 20260815-165955 = 0/20, every round build-fails
+    # (bad checkpoint/endpoint state at the time); superseded by the earlier
+    # clean 20260812-005922 run (17/20). Pin to that one, not "latest".
+    "RabbitCT-LolaBunny/pi/deepseek-ai_DeepSeek-V4-Flash-0731/20260815-165955",
+    "RabbitCT-LolaOMP/pi/deepseek-ai_DeepSeek-V4-Flash-0731/20260815-165955",
+    "stream-compact/pi/deepseek-ai_DeepSeek-V4-Flash-0731/20260815-165955",
+    "tiled-gemm/pi/deepseek-ai_DeepSeek-V4-Flash-0731/20260815-165955",
 }
 
 MIN_CAMPAIGN_ROUNDS = 3
@@ -82,7 +89,9 @@ ARTIFACT_ROUNDS = {
 }
 
 SCOPES = ("curated", "all")
-DEFAULT_SCOPE = "curated"
+# "curated" encodes the owner's reference selection (A40 only, hand-picked exclusions) and only
+# makes sense for the reference results. Default to every run; TRACE_VIS_SCOPE=curated opts in.
+DEFAULT_SCOPE = "curated" if os.environ.get("TRACE_VIS_SCOPE") == "curated" else "all"
 
 
 def normalize_scope(value):
@@ -153,10 +162,10 @@ def curated_run_ids(rows):
 def workspace_exclude_campaigns(workspace):
     """EXCLUDE_CAMPAIGNS as the workspace itself defines it, or None.
 
-    Read as text instead of imported: checks/report_tables.py is a CLI module
+    Read as text instead of imported: reference-results/analysis/report_tables.py is a CLI module
     and the container may not have it bound at all.
     """
-    path = os.path.join(workspace, "checks", "report_tables.py")
+    path = os.path.join(workspace, "reference-results", "analysis", "report_tables.py")
     try:
         src = open(path, "r", errors="replace").read()
     except OSError:

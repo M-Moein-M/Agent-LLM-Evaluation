@@ -5,7 +5,9 @@
      #/problems                  problem list        (pick a problem first)
      #/problems/<p>              agents for problem  -> campaigns -> runs
      #/agents                    agent list          (pick an agent first)
-     #/agents/<a>                problems for agent  -> campaigns -> runs
+     #/agents/<a>                campaigns for agent -> problems    -> runs
+     #/models                    model list          (pick a model first)
+     #/models/<m>                agents for model    -> campaigns   -> runs
      #/run/<problem>/<agent>/<model>/<campaign>/round-<n>
 */
 (function () {
@@ -39,10 +41,25 @@
   function pct(x) { return x == null ? '—' : Math.round(x * 100) + '%'; }
   function num(x) { return x == null ? '—' : String(x); }
 
-  function passChip(passed, failedStage) {
+  /* The failure name is r.fail_class: one fine-grained slug per failing round
+     (context_overflow, format_error, compile_error, mse, ...), computed once in
+     checks/failure_class.py and carried through runs.jsonl, so the chip here,
+     the timeline's last node and results/summary.json all say the same word.
+     It replaced the failing STAGE's name, which read "build" on any round whose
+     agent died before a compiler ever ran — most of them. fail_label is the
+     sentence-long version, shown on hover. */
+  function passChip(passed, r) {
     if (passed === null || passed === undefined) return '<span class="chip none">ungraded</span>';
     if (passed) return '<span class="chip pass">pass</span>';
-    return '<span class="chip fail">fail' + (failedStage ? ': ' + esc(failedStage) : '') + '</span>';
+    var why = (r && (r.fail_class || r.failed_stage)) || '';
+    var tip = (r && r.fail_label) || '';
+    /* the detail is EVIDENCE (a compiler line, an exception). A run-end reason
+       has none and repeats the label, so don't print the same words twice. */
+    if (r && r.fail_detail && r.fail_detail !== tip) {
+      tip = tip ? tip + ' \u2014 ' + r.fail_detail : r.fail_detail;
+    }
+    return '<span class="chip fail"' + (tip ? ' title="' + esc(tip) + '"' : '') +
+           '>fail' + (why ? ': ' + esc(why) : '') + '</span>';
   }
 
   function metricStr(m) {
@@ -142,8 +159,11 @@
       h.push(r.curated === false
         ? '<tr class="dim" title="not in the important-runs scope">'
         : '<tr>');
-      h.push('<td><a href="' + runHref(r.run_id) + '">round ' + num(r.round) + '</a></td>');
-      h.push('<td>' + passChip(r.passed, r.failed_stage) + '</td>');
+      /* new tab: a rounds table is a list you work through, and the timeline
+         is a long read — going back would lose your place in the list. */
+      h.push('<td><a target="_blank" rel="noopener" href="' + runHref(r.run_id) +
+             '">round ' + num(r.round) + '</a></td>');
+      h.push('<td>' + passChip(r.passed, r) + '</td>');
       if (anyMetric) h.push('<td>' + metricStr(r.metric) + '</td>');
       h.push('<td class="num">' + num(r.turns) + '</td>');
       h.push('<td class="num">' + num(r.steps) + '</td>');
@@ -166,6 +186,64 @@
                '<span class="chip ' + (c.n_passed ? 'pass' : 'none') + '">' +
                  c.n_passed + '/' + c.n_graded + ' pass</span>' + partial +
              '</div>' + runsTable(c.runs);
+    }).join('');
+  }
+
+  /* The agent view groups by campaign, not by problem: one submission runs the
+     same model against every problem under one timestamp, so a "wave" is what
+     you actually compare. Problems become sub-sections inside it, newest wave
+     first. (The problem view keeps the opposite pivot.) */
+  function groupWaves(problems) {
+    var waves = {};
+    (problems || []).forEach(function (p) {
+      (p.campaigns || []).forEach(function (c) {
+        var key = c.model + ' ' + c.campaign;
+        if (!waves[key]) {
+          waves[key] = { model: c.model, campaign: c.campaign, parts: [],
+                         n_runs: 0, n_runs_all: 0, n_graded: 0, n_passed: 0 };
+        }
+        var w = waves[key];
+        w.parts.push({ problem: p.name, campaign: c });
+        w.n_runs += c.n_runs || 0;
+        w.n_runs_all += (c.n_runs_all != null ? c.n_runs_all : c.n_runs || 0);
+        w.n_graded += c.n_graded || 0;
+        w.n_passed += c.n_passed || 0;
+      });
+    });
+    return Object.keys(waves).map(function (k) { return waves[k]; })
+      .sort(function (a, b) {
+        if (a.campaign !== b.campaign) return a.campaign < b.campaign ? 1 : -1;
+        return a.model < b.model ? -1 : a.model > b.model ? 1 : 0;
+      });
+  }
+
+  function wavesBlock(waves) {
+    if (!waves.length) return '<div class="empty">No campaigns.</div>';
+    return waves.map(function (w) {
+      var partial = w.n_runs_all > w.n_runs
+        ? '<span class="chip soft" title="rounds dropped as infra failures">' +
+          w.n_runs + ' of ' + w.n_runs_all + ' rounds</span>' : '';
+      var h = ['<section class="wave">'];
+      h.push('<div class="wave-head">' +
+               '<span class="model">' + esc(w.model) + '</span>' +
+               '<span class="ts">' + esc(w.campaign) + '</span>' +
+               '<span class="chip ' + (w.n_passed ? 'pass' : 'none') + '">' +
+                 w.n_passed + '/' + w.n_graded + ' pass</span>' + partial +
+               '<span class="count">' + w.parts.length +
+                 (w.parts.length === 1 ? ' problem' : ' problems') + '</span>' +
+             '</div>');
+      w.parts.forEach(function (part) {
+        var c = part.campaign;
+        h.push('<div class="wave-prob">' +
+                 '<a href="#/problems/' + encodeURIComponent(part.problem) + '">' +
+                   esc(part.problem) + '</a>' +
+                 '<span class="chip ' + (c.n_passed ? 'pass' : 'none') + '">' +
+                   c.n_passed + '/' + c.n_graded + '</span>' +
+               '</div>');
+        h.push(runsTable(c.runs));
+      });
+      h.push('</section>');
+      return h.join('');
     }).join('');
   }
 
@@ -209,7 +287,10 @@
 
       h.push('<h2>Models</h2><div class="grid">');
       s.models.forEach(function (m) {
-        h.push('<div class="card"><div class="name">' + esc(m) + '</div></div>');
+        h.push('<a class="card" href="#/models/' + encodeURIComponent(m.name) + '">' +
+               '<div class="name">' + esc(m.name) + '</div>' +
+               '<div class="meta">' + m.n_runs + ' runs \u00b7 ' + m.agents.length + ' agents \u00b7 ' + pct(m.pass_rate) + ' pass</div>' +
+               passBar(m.n_passed, m.n_graded) + '</a>');
       });
       h.push('</div>');
       view.innerHTML = h.join('');
@@ -257,6 +338,27 @@
     });
   }
 
+  function viewModelList() {
+    setTab('models');
+    return api('/api/summary', { scope: SCOPE }).then(function (s) {
+      var h = [crumbs([{ label: 'Models' }]),
+               '<h1>Models</h1>',
+               '<p class="sub">Pick a model, then an agent, then a run.</p>',
+               scopeNote(s.scope),
+               '<div class="grid">'];
+      s.models.forEach(function (m) {
+        h.push('<a class="card" href="#/models/' + encodeURIComponent(m.name) + '">' +
+               '<div class="name">' + esc(m.name) + '</div>' +
+               '<div class="meta">' + m.n_runs + ' runs \u00b7 ' + m.agents.length +
+                 ' agents \u00b7 ' + m.problems.length + ' problems \u00b7 ' + pct(m.pass_rate) + ' pass</div>' +
+               passBar(m.n_passed, m.n_graded) + '</a>');
+      });
+      h.push('</div>');
+      view.innerHTML = h.join('');
+      wireScopeLinks();
+    });
+  }
+
   /* problem -> agents -> campaigns -> runs */
   function viewProblem(name) {
     setTab('problems');
@@ -278,21 +380,44 @@
     });
   }
 
-  /* agent -> problems -> campaigns -> runs */
+  /* agent -> campaigns (waves) -> problems -> runs */
   function viewAgent(name) {
     setTab('agents');
     return api('/api/agent', { name: name, scope: SCOPE }).then(function (d) {
       var h = [crumbs([{ label: 'Agents', href: '#/agents' }, { label: d.agent }])];
+      var waves = groupWaves(d.problems);
       h.push('<h1>' + esc(d.agent) + '</h1>');
-      h.push('<p class="sub">' + d.n_runs + ' runs across ' + d.problems.length +
+      h.push('<p class="sub">' + d.n_runs + ' runs · ' + waves.length +
+             ' campaigns across ' + d.problems.length +
              ' problems · ' + pct(d.pass_rate) + ' pass</p>');
       h.push(scopeNote(d.scope));
-      if (!d.problems.length) h.push('<div class="empty">No runs in this scope.</div>');
-      d.problems.forEach(function (p) {
-        h.push('<h2>' + esc(p.name) +
-               ' <span class="chip ' + (p.n_passed ? 'pass' : 'none') + '">' +
-               p.n_passed + '/' + p.n_graded + '</span></h2>');
-        h.push(campaignsBlock(p.campaigns));
+      if (!waves.length) h.push('<div class="empty">No runs in this scope.</div>');
+      else h.push(wavesBlock(waves));
+      view.innerHTML = h.join('');
+      wireScopeLinks();
+    });
+  }
+
+  /* model -> agents -> campaigns (waves) -> problems -> runs
+
+     Same weights, one harness per section: the point of this view is reading
+     down the agents to see which harness got more out of the model. Inside a
+     section it is the agent view's layout, so a wave still means one campaign. */
+  function viewModel(name) {
+    setTab('models');
+    return api('/api/model', { name: name, scope: SCOPE }).then(function (d) {
+      var h = [crumbs([{ label: 'Models', href: '#/models' }, { label: d.model }])];
+      h.push('<h1>' + esc(d.model) + '</h1>');
+      h.push('<p class="sub">' + d.n_runs + ' runs across ' + d.agents.length +
+             (d.agents.length === 1 ? ' agent' : ' agents') +
+             ' \u00b7 ' + pct(d.pass_rate) + ' pass</p>');
+      h.push(scopeNote(d.scope));
+      if (!d.agents.length) h.push('<div class="empty">No runs in this scope.</div>');
+      d.agents.forEach(function (a) {
+        h.push('<h2><a href="#/agents/' + encodeURIComponent(a.name) + '">' + esc(a.name) + '</a>' +
+               ' <span class="chip ' + (a.n_passed ? 'pass' : 'none') + '">' +
+               a.n_passed + '/' + a.n_graded + '</span></h2>');
+        h.push(wavesBlock(groupWaves(a.problems)));
       });
       view.innerHTML = h.join('');
       wireScopeLinks();
@@ -346,14 +471,31 @@
     /* run header */
     h.push('<div class="runhead">');
     h.push('<div class="title"><h1>' + esc(r.problem) + ' · ' + esc(r.agent) + ' · round ' + num(r.round) + '</h1>' +
-           passChip(r.passed, r.failed_stage) + '</div>');
+           passChip(r.passed, r) + '</div>');
     h.push('<div class="kv">');
     h.push('<span><b>model</b> <code>' + esc(r.model_raw || r.model) + '</code></span>');
     h.push('<span><b>campaign</b> <code>' + esc(r.campaign) + '</code></span>');
+    /* spell the failure out here too: the chip has room for the slug only */
+    if (r.passed === false && (r.fail_label || r.fail_class)) {
+      h.push('<span><b>why</b> ' + esc(r.fail_label || r.fail_class) +
+             (r.fail_detail && r.fail_detail !== (r.fail_label || r.fail_class)
+                ? ' <span class="chip soft">' + esc(r.fail_detail) + '</span>' : '') +
+             '</span>');
+    }
     h.push('<span><b>schema</b> <code>' + esc(meta.schema || 'unknown') + '</code></span>');
     h.push('<span><b>trace</b> <code>' + esc(meta.trace_file || '—') + '</code></span>');
     if (r.metric && r.metric.value != null) h.push('<span><b>' + esc(r.metric.name || 'metric') + '</b> ' + metricStr(r.metric) + '</span>');
-    if (r.turns != null) h.push('<span><b>turns</b> ' + num(r.turns) + '</span>');
+    if (r.turns != null) {
+      /* `turns` is model calls. The timeline's "Assistant" chip counts only the
+         turns that said something -- a turn that fires a tool with no prose
+         emits no assistant_text event -- so the two disagree on purpose. Spell
+         the difference out here rather than leave the chip looking wrong. */
+      var withText = (page.stats && page.stats.by_kind) ? page.stats.by_kind.assistant_text : null;
+      h.push('<span><b>turns</b> ' + num(r.turns) + ' model calls' +
+             (withText != null && withText !== r.turns
+                ? ' <span class="dim">(' + num(withText) + ' with text)</span>' : '') +
+             '</span>');
+    }
     if (r.total_tokens != null) h.push('<span><b>tokens</b> ' + r.total_tokens.toLocaleString() + '</span>');
     if (r.peak_context != null) h.push('<span><b>peak ctx</b> ' + r.peak_context.toLocaleString() + '</span>');
     if (r.gpu) h.push('<span><b>gpu</b> <code>' + esc(r.gpu) + '</code></span>');
@@ -484,6 +626,7 @@
     if (!parts.length) p = viewHome();
     else if (parts[0] === 'problems') p = parts[1] ? viewProblem(parts[1]) : viewProblemList();
     else if (parts[0] === 'agents') p = parts[1] ? viewAgent(parts[1]) : viewAgentList();
+    else if (parts[0] === 'models') p = parts[1] ? viewModel(parts[1]) : viewModelList();
     else if (parts[0] === 'run') p = viewRun(parts.slice(1).join('/'));
     else p = Promise.reject(new Error('Unknown route: ' + hash));
 

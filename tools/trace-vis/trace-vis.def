@@ -23,9 +23,14 @@ From: python:3.12-slim
 # The workspace is bound READ-ONLY on purpose: this is a viewer, it never
 # writes to traces/.
 
+# failure_class.py is OWNED by the eval pipeline (checks/) and copied in from
+# there, so the viewer can never disagree with results/summary.json about why a
+# round failed. It is the one file here that lives outside this directory.
+
 %files
     app.py        /opt/trace-vis/app.py
     parsers.py    /opt/trace-vis/parsers.py
+    ../../checks/failure_class.py  /opt/trace-vis/failure_class.py
     indexer.py    /opt/trace-vis/indexer.py
     curation.py   /opt/trace-vis/curation.py
     build_web.py  /opt/trace-vis/build_web.py

@@ -1,18 +1,24 @@
 /* Renders a normalized event list as a vertical timeline.
-   Event kinds (see parsers.py): system | user | assistant_text | thinking | tool_call | log */
+   Event kinds (see parsers.py):
+   system | user | assistant_text | thinking | tool_call | log | run_end */
 (function () {
   'use strict';
 
   var esc = function (s) { return window.TV.esc(s); };
   var md = function (s) { return window.TV.md(s); };
 
+  /* This chip counts assistant events, which is not the round's model-call
+     count: a turn that fires a tool with no commentary emits no assistant_text
+     event at all, only its tool_call events. So it reads low against the
+     header, which spells the gap out as "N model calls (M with text)". */
   var LABEL = {
     system: 'System',
     user: 'User',
     assistant_text: 'Assistant',
     thinking: 'Thinking',
     tool_call: 'Tool',
-    log: 'Log'
+    log: 'Log',
+    run_end: 'Run ended'
   };
 
   /* Pull the most meaningful single line out of a tool's arguments, so the
@@ -182,7 +188,8 @@
 
   function renderEvent(ev) {
     var kind = ev.kind || 'log';
-    var cls = 'ev ' + kind + (ev.is_error ? ' err' : '');
+    var cls = 'ev ' + kind + (ev.is_error ? ' err' : '') +
+              (kind === 'run_end' ? ' sev-' + (ev.end_severity || 'error') : '');
     var h = [];
     h.push('<div class="' + cls + '" data-kind="' + esc(kind) + '">');
     h.push('<div class="ev-box">');
@@ -194,6 +201,14 @@
       h.push('<span class="tool">' + esc(ev.tool_name || '?') + '</span>');
       if (ev.is_error) h.push('<span class="chip fail">error</span>');
       else if (ev.tool_output == null) h.push('<span class="chip none">no output</span>');
+    } else if (kind === 'run_end') {
+      var sev = ev.end_severity || 'error';
+      h.push('<span class="chip ' + (sev === 'ok' ? 'pass' : sev === 'warn' ? 'soft' : 'fail') +
+             '">' + esc(ev.end_reason || ev.end_stop_reason || 'ended') + '</span>');
+    }
+    if (ev.finish_reason) {
+      h.push('<span class="chip warn" title="' + esc(ev.finish_reason_detail || '') +
+             '">finish: ' + esc(ev.finish_reason) + '</span>');
     }
     var t = timeStr(ev.timestamp);
     if (t) h.push('<span class="chip soft">' + esc(t) + '</span>');
@@ -232,6 +247,24 @@
              String(ev.text || '').length + ' chars)</summary>' +
              '<div class="ev-body"><div class="md">' + md(ev.text) + '</div>' +
              (ev.text_truncated ? truncNote('Text') : '') + '</div></details>');
+    } else if (kind === 'run_end') {
+      /* Last node of the trace: why it stopped. Without it a run killed by a
+         context overflow (pi, swe-mini), a step-cap/provider error (kimi) or
+         the turn budget (claude) just ends mid-conversation, looking like the
+         model quit on its own. parsers.py::_pi_run_end / _kimi_run_end /
+         _claude_run_end / _swemini_run_end. */
+      h.push('<div class="endline">' + esc(ev.text || '') + '</div>');
+      if (ev.end_tokens_used && ev.end_tokens_limit) {
+        var within = Math.max(2, Math.min(98,
+          Math.round(ev.end_tokens_limit / ev.end_tokens_used * 100)));
+        h.push('<div class="overbar" title="' + ev.end_tokens_limit +
+               ' token limit, ' + ev.end_tokens_used + ' sent">' +
+               '<span class="fill" style="width:' + within + '%"></span></div>');
+      }
+      if (ev.tool_output) {
+        h.push('<details class="sub"><summary>Provider message</summary>' +
+               renderPayload(ev.tool_output, 'out err') + '</details>');
+      }
     } else if (kind === 'log') {
       h.push(renderPayload(ev.text || ev.tool_output || '', 'out') ||
              '<pre class="out"></pre>');
@@ -245,7 +278,8 @@
   }
 
   /* Kinds the filter bar offers, in timeline order of usefulness. */
-  var FILTER_KINDS = ['system', 'user', 'assistant_text', 'thinking', 'tool_call', 'log'];
+  var FILTER_KINDS = ['system', 'user', 'assistant_text', 'thinking', 'tool_call',
+                      'log', 'run_end'];
 
   function renderTimeline(events) {
     if (!events.length) {

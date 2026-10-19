@@ -11,7 +11,7 @@ set -euo pipefail
 
 HERE="$(dirname "$(readlink -f "$0")")"
 SIF="$HERE/trace-vis.sif"
-WORKSPACE="$(readlink -f "$HERE/..")"
+WORKSPACE="$(readlink -f "$HERE/../..")"
 PORT=""
 HOST="127.0.0.1"
 EXTRA=()
@@ -36,7 +36,7 @@ done
 
 [[ -f "$SIF" ]] || { echo "error: $SIF not found — run ./build.sh first" >&2; exit 1; }
 [[ -d "$WORKSPACE/traces" ]] || {
-    echo "error: $WORKSPACE has no traces/ — pass -w /path/to/nhr-eval-workspace" >&2; exit 1; }
+    echo "error: $WORKSPACE has no traces/ — pass -w /path/to/repo" >&2; exit 1; }
 
 # first free port from 8080 up, unless one was given
 if [[ -z "$PORT" ]]; then

@@ -77,6 +77,46 @@ check(TV.payloadBlocks({}).length === 1, 'an empty object still renders');
 check(TV.payloadBlocks('{"nope": ')[0].text === '{"nope": ',
       'text that is neither parseable nor escaped is left alone');
 
+console.log('run_end node');
+
+const endEv = {
+  idx: 9, kind: 'run_end', role: 'system', is_error: true,
+  text: 'Context window exceeded · 220,211 input tokens against a 215,684 limit (4,527 over)',
+  tool_output: 'OpenAIException - Input length (220211 tokens) exceeds the maximum allowed length (215684 tokens).',
+  end_reason: 'context_overflow', end_severity: 'error',
+  end_tokens_used: 220211, end_tokens_limit: 215684
+};
+let eh = TV.renderEvent(endEv);
+check(eh.indexOf('class="ev run_end err sev-error"') === 0 ||
+      eh.indexOf('ev run_end err sev-error') > 0,
+      'the node carries its kind and severity as classes', eh.slice(0, 80));
+check(eh.indexOf('215,684 limit') > 0, 'the summary is stated in full, not behind a disclosure');
+check(eh.indexOf('context_overflow') > 0, 'the reason shows as a chip');
+check(/<div class="overbar"[^>]*><span class="fill" style="width:9[0-9]%">/.test(eh),
+      'the over-limit bar fills to the share that fit', eh.slice(eh.indexOf('overbar'), 200));
+check(eh.indexOf('<details class="sub"><summary>Provider message') > 0,
+      'the raw provider message stays available');
+
+const okEv = { idx: 1, kind: 'run_end', end_severity: 'ok', end_reason: 'completed',
+               text: 'Completed — the model ended its turn' };
+eh = TV.renderEvent(okEv);
+check(eh.indexOf('sev-ok') > 0 && eh.indexOf('overbar') < 0,
+      'a clean finish has no over-limit bar');
+/* a harness cutoff (claude's error_max_turns, kimi's step cap) is amber, not
+   red: nothing failed on the provider's side, the run was stopped */
+const cutEv = { idx: 2, kind: 'run_end', end_severity: 'warn', end_reason: 'max_turns',
+                text: 'Turn limit reached — the harness cut the run off · stopped after 121 turns',
+                tool_output: 'Reached maximum number of turns (120)' };
+eh = TV.renderEvent(cutEv);
+check(eh.indexOf('class="ev run_end sev-warn"') > 0,
+      'a harness cutoff is a warning, not an error', eh.slice(0, 90));
+check(eh.indexOf('121 turns') > 0 && eh.indexOf('overbar') < 0,
+      'it states the turn count and shows no token bar');
+check(eh.indexOf('>max_turns<') > 0, 'the reason chip names the cutoff');
+
+check(TV.FILTER_KINDS.indexOf('run_end') >= 0 && TV.LABEL.run_end === 'Run ended',
+      'run_end is filterable and labelled');
+
 /* --- real events, if the caller supplied them --------------------------- */
 const casesFile = process.argv[2];
 if (casesFile) {
