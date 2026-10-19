@@ -4,58 +4,40 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-EVAL_AGENT="${EVAL_AGENT:-swe-mini}"
-CONTAINER_RUNTIME="${CONTAINER_RUNTIME:-docker}"   # docker (local) | apptainer (cluster)
-EVAL_PROVIDER="${EVAL_PROVIDER:-local}"            # providers.<name> in models.json: local (NHR gw) | llama (host)
-EVAL_MODELS="${EVAL_MODELS:-}"
+# host.sh scripts treat the current directory as the repo root.
+cd "$ROOT"
+
+EVAL_AGENT="${EVAL_AGENT:-swe-mini}"               # claude | kimi | pi | swe-mini | claude-pro
+CONTAINER_RUNTIME="${CONTAINER_RUNTIME:-apptainer}" # apptainer is the only supported runtime
 EVAL_ROUNDS="${EVAL_ROUNDS:-20}"
 EVAL_PROBLEMS="${EVAL_PROBLEMS:-RabbitCT-LolaBunny}"
 EVAL_SIZE="${EVAL_SIZE:-256}"
 EVAL_VARIANT="${EVAL_VARIANT:-LolaBunnyGPU}"
-MODELS_CONFIG="${MODELS_CONFIG:-$ROOT/agents/apptainer/pi/models.json}"
 
-if [ -z "$EVAL_MODELS" ] && [ "$EVAL_AGENT" = "claude-pro" ]; then
-  # claude-pro's models are real Anthropic ids, not gateway ids from models.json.
-  EVAL_MODELS="claude-opus-5"
+# Endpoint: endpoints.yaml + .env -> .run/models.json and EVAL_ENDPOINT / EVAL_PROVIDER /
+# EVAL_MODELS / MODELS_CONFIG (see scripts/lib/resolve_endpoint.py). Select with
+# EVAL_ENDPOINT=<name> and EVAL_MODELS=<key|id>[,...]; EVAL_MODELS defaults to every
+# model of the endpoint. claude-pro takes a subscription model id instead.
+. "$ROOT/scripts/lib/endpoint.sh"
+if [ -z "${EVAL_MODELS:-}" ] && [ "$EVAL_AGENT" = "claude-pro" ]; then
+  EVAL_MODELS="claude-opus-5"   # real Anthropic id, not an endpoint model
 fi
-
-if [ -z "$EVAL_MODELS" ]; then
-  if command -v jq >/dev/null 2>&1; then
-    EVAL_MODELS=$(jq -r ".providers.${EVAL_PROVIDER}.models[].id" "$MODELS_CONFIG" | paste -sd, -)
-  else
-    echo "ERROR: EVAL_MODELS not set and jq not available to parse $MODELS_CONFIG" >&2
-    exit 1
-  fi
-fi
-
-export EVAL_AGENT
-export CONTAINER_RUNTIME
-export EVAL_PROVIDER
+export EVAL_AGENT CONTAINER_RUNTIME EVAL_ROUNDS EVAL_PROBLEMS EVAL_SIZE EVAL_VARIANT
+resolve_endpoints "$ROOT" "$EVAL_AGENT" || exit 1
 export EVAL_MODELS
-export EVAL_ROUNDS
-export EVAL_PROBLEMS
-export EVAL_SIZE
-export EVAL_VARIANT
-export MODELS_CONFIG
 
 DATA_ROOT="${DATA_ROOT:-$ROOT/data}"
 export DATA_ROOT
 
 # ---------------------------------------------------------------------------
-# Stage 0: reachability preflight. The gateway serves ONE model at a time
-# and its identity/availability changes between sessions (see AGENT.md gotchas).
-# Probe every id in EVAL_MODELS against the gateway with a 1-token completion
-# and abort in ~30s if any is unreachable — far better than discovering it 4h
-# into a batch. Doubles as the per-wave gate confirming the currently-served
-# model is live before a 2h job starts. Skip with EVAL_SKIP_PREFLIGHT=1.
+# Stage 0: reachability preflight. Sends a 1-token request per model with the
+# protocol the agent speaks (/chat/completions; /v1/messages for claude) and aborts
+# in ~30 s if any model is unreachable, instead of discovering it hours into a batch.
+# Skip with EVAL_SKIP_PREFLIGHT=1.
 # ---------------------------------------------------------------------------
 if [ "${EVAL_SKIP_PREFLIGHT:-0}" != "1" ] && [ "$EVAL_AGENT" = "claude-pro" ]; then
-  # claude-pro does NOT use the gateway: it runs Claude Code on a personal
-  # subscription against api.anthropic.com, so the gateway probe below would
-  # (correctly) fail every real Anthropic model id. Probe what this agent
-  # actually depends on instead: the token file exists, and the compute node can
-  # reach api.anthropic.com. Auth itself is validated by the run (the OAuth token
-  # needs Claude Code's own headers; hand-rolling that curl would be fragile).
+  # claude-pro runs Claude Code on a personal subscription against api.anthropic.com.
+  # Check the token file and outbound HTTPS. Auth itself is validated by the run.
   TOKEN_FILE="${OAUTH_TOKEN_FILE:-$ROOT/agents/apptainer/claude-pro/.secrets/oauth_token}"
   echo "Stage 0: claude-pro preflight (subscription auth, api.anthropic.com)"
   if [ ! -s "$TOKEN_FILE" ]; then
@@ -68,43 +50,11 @@ if [ "${EVAL_SKIP_PREFLIGHT:-0}" != "1" ] && [ "$EVAL_AGENT" = "claude-pro" ]; t
     https://api.anthropic.com/v1/messages 2>/dev/null || echo 000)
   if [ "$http" = "000" ]; then
     echo "ERROR: cannot reach https://api.anthropic.com from this node (no route/proxy)." >&2
-    echo "       claude-pro needs outbound HTTPS to Anthropic; the gateway agents do not." >&2
     exit 1
   fi
   echo "  [ok]   api.anthropic.com reachable (HTTP $http)"
-elif [ "${EVAL_SKIP_PREFLIGHT:-0}" != "1" ]; then
-  if ! command -v curl >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
-    echo "WARN: curl/jq unavailable — skipping reachability preflight (Stage 0)." >&2
-  else
-    BASE=$(jq -r ".providers.${EVAL_PROVIDER}.baseUrl" "$MODELS_CONFIG")
-    KEY=$(jq -r ".providers.${EVAL_PROVIDER}.apiKey"  "$MODELS_CONFIG")
-    echo "Stage 0: reachability preflight against $BASE"
-    IFS=',' read -r -a _PF_MODELS <<< "$EVAL_MODELS"
-    PF_FAILED=()
-    for _m in "${_PF_MODELS[@]}"; do
-      # 1-token completion via the openai-compat surface (same gateway + model
-      # the agents hit; claude reaches the same model over the Anthropic surface).
-      body=$(jq -n --arg m "$_m" \
-        '{model:$m, max_tokens:1, messages:[{role:"user", content:"ping"}]}')
-      http=$(curl -s -o /dev/null -w '%{http_code}' \
-        --connect-timeout 10 --max-time 30 \
-        -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
-        -X POST "$BASE/chat/completions" -d "$body" 2>/dev/null || echo 000)
-      if [ "$http" = "200" ]; then
-        echo "  [ok]   $_m (HTTP 200)"
-      else
-        echo "  [FAIL] $_m (HTTP $http)"
-        PF_FAILED+=("$_m")
-      fi
-    done
-    if [ "${#PF_FAILED[@]}" -gt 0 ]; then
-      echo "ERROR: reachability preflight failed for: ${PF_FAILED[*]}" >&2
-      echo "       The gateway ($BASE) did not serve these model id(s) with HTTP 200." >&2
-      echo "       Confirm the model is currently served and the id/baseUrl/apiKey in" >&2
-      echo "       $MODELS_CONFIG are correct, then re-run. (Override: EVAL_SKIP_PREFLIGHT=1.)" >&2
-      exit 1
-    fi
-  fi
+elif [ "${EVAL_SKIP_PREFLIGHT:-0}" != "1" ] && [ -f "$ROOT/.run/models.json" ] && [ "$MODELS_CONFIG" = "$ROOT/.run/models.json" ]; then
+  python3 "$ROOT/scripts/lib/resolve_endpoint.py" --agent "$EVAL_AGENT" --preflight || exit 1
 fi
 
 # ---------------------------------------------------------------------------
@@ -136,7 +86,7 @@ if [[ ${#RABBIT_VARIANTS[@]} -gt 0 ]]; then
   fi
   # Point each requested variant's data dir at the canonical copy (gitignored).
   # ln -sfn + || true, not a bare `ln -s` under the `! -e` guard: several
-  # campaigns can now share one node (scripts/_run_merged_claude.slurm runs 3
+  # campaigns can now share one node (a packed SLURM job can run 3
   # concurrent run_eval.sh), so the check-then-create is a TOCTOU race — all
   # three see "missing", two lose the ln and die on `set -e`. -sfn makes it
   # idempotent, and the guard stays to keep the log quiet in the common case.
@@ -150,9 +100,8 @@ fi
 
 # ---------------------------------------------------------------------------
 # Stage 2: run the eval with the selected agent + runtime. Orchestrator lives at
-# agents/<CONTAINER_RUNTIME>/<EVAL_AGENT>/host.sh — docker (local) or apptainer
-# (cluster). Both implement the same two-phase (parallel solve / serial measure)
-# contract over the same problems + checks.
+# agents/<CONTAINER_RUNTIME>/<EVAL_AGENT>/host.sh. It runs the two-phase contract
+# (parallel solve / serial measure) over the problems and checks.
 # ---------------------------------------------------------------------------
 AGENT_HOST="$ROOT/agents/$CONTAINER_RUNTIME/$EVAL_AGENT/host.sh"
 if [[ ! -f "$AGENT_HOST" ]]; then

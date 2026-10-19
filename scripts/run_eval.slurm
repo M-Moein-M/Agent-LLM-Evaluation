@@ -1,11 +1,10 @@
 #!/bin/bash -l
 #SBATCH --job-name=agent-eval
-#SBATCH --gres=gpu:a40:1            # one GPU (matches your interactive salloc; swap a40->a100 if needed)
+#SBATCH --gres=gpu:a40:1            # one GPU; adjust to your cluster (measure phase needs a quiet GPU)
 #SBATCH --time=02:00:00
 #SBATCH --cpus-per-task=32          # >= EVAL_SOLVE_PAR: each parallel solve runs node/python + CUDA compiles on CPU
-# NOTE: do NOT set --mem on cluster (the cluster) — GPU jobs reject it; memory is
-# auto-allocated proportional to the number of GPUs requested.
-#SBATCH --output=eval-%j.out
+# NOTE: some clusters reject --mem for GPU jobs (memory is allocated per GPU). Add it if yours needs it.
+#SBATCH --output=eval-logs/eval-%j.out
 #
 # Run the agent-evaluation harness on one GPU via Apptainer.
 #
@@ -18,7 +17,8 @@
 #         apptainer build --fakeroot agents/apptainer/pi/agent.sif       agents/apptainer/pi/agent.def
 #       APPTAINER_CACHEDIR=$TMPDIR/apptainer-cache \
 #         apptainer build --fakeroot agents/apptainer/swe-mini/agent.sif agents/apptainer/swe-mini/agent.def
-#   * Ensure the compute node can reach the sglang gateway in models.json (baseUrl).
+#   * cp endpoints.yaml.example endpoints.yaml and cp .env.example .env, then edit both.
+#     The compute node must be able to reach the base_url.
 #   * Ensure the bulk RabbitCT data is present under $DATA_ROOT (Stage 1 of
 #     run_eval.sh will download it if missing — put it on persistent scratch,
 #     NOT $TMPDIR, so it isn't re-downloaded every job).
@@ -30,15 +30,11 @@ module load apptainer 2>/dev/null || module load singularity 2>/dev/null || true
 cd "$SLURM_SUBMIT_DIR"   # run from the repo root you submitted from
 
 # --- runtime + eval configuration (override at submit time with --export) ---
-# pi is DROPPED from the first A40 run (no enforceable step cap — see TODO.md /
-# AGENT.md). Default to swe-mini; run one sbatch per agent (e.g. claude) by
-# overriding EVAL_AGENT at submit time: `sbatch --export=ALL,EVAL_AGENT=claude ...`.
+# One sbatch per agent: `sbatch --export=ALL,EVAL_AGENT=claude scripts/run_eval.slurm`.
 export CONTAINER_RUNTIME=apptainer
 export EVAL_AGENT="${EVAL_AGENT:-swe-mini}"
-# Endpoint selector: providers.<name> in models.json. local = gateway (Qwen);
-# llama = the host Llama-3.3-70B endpoint. Override at submit with --export.
-export EVAL_PROVIDER="${EVAL_PROVIDER:-local}"
-export EVAL_MODELS="${EVAL_MODELS:-Qwen3.6-35B-A3B}"
+# Endpoint and models come from endpoints.yaml: EVAL_ENDPOINT=<name> (optional when only
+# one is defined), EVAL_MODELS=<key|id>[,...] (default: every model of the endpoint).
 export EVAL_ROUNDS="${EVAL_ROUNDS:-10}"
 export EVAL_SOLVE_PAR="${EVAL_SOLVE_PAR:-32}"
 export EVAL_PROBLEMS="${EVAL_PROBLEMS:-RabbitCT-LolaBunny,RabbitCT-LolaOMP,tiled-gemm,stream-compact}"

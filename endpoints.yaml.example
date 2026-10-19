@@ -1,0 +1,39 @@
+# Copy to endpoints.yaml (gitignored) and edit. Secrets go in .env, never here.
+#
+# One entry per OpenAI-compatible server (a LiteLLM proxy, SGLang, vLLM, a hosted API).
+# All four agents read this one file:
+#   pi, swe-mini, kimi   -> POST {base_url}/chat/completions
+#   claude               -> POST {base_url minus /v1}/v1/messages  (Anthropic protocol; the
+#                           server must expose it, e.g. LiteLLM in front of SGLang)
+#
+# Endpoint names must match [A-Za-z_][A-Za-z0-9_]* (they are used as jq paths).
+
+endpoints:
+  default:
+    base_url: http://localhost:30000/v1      # must end in /v1
+    api_key_env: EVAL_API_KEY                # name of the variable in .env (or the process env)
+    # api_key: EMPTY                         # alternative for servers without auth (no secret here)
+    protocols: [openai, anthropic]           # drop "anthropic" if /v1/messages is not served
+    models:
+      # key: a short name you pass as EVAL_MODELS. Each entry:
+      #   id                wire model id sent to the server (default: the key)
+      #   context_window    tokens the server accepts (input + output)
+      #   max_output_tokens per-response cap handed to pi/swe-mini
+      #   reasoning         true if the model emits thinking (the endpoint test then expects it)
+      #   trace_tag         folder name under traces/<problem>/<agent>/ (default: id with / -> _)
+      #   agent_ids         per-agent wire id override, e.g. a "-think" alias for claude
+      my-model:
+        id: org/Model-Name
+        context_window: 128000
+        max_output_tokens: 32768
+        reasoning: true
+        # trace_tag: Model-Name-run2
+        # agent_ids: { claude: org/Model-Name-think }
+
+  # A second endpoint (no auth, different server):
+  # other:
+  #   base_url: http://10.0.0.5:8000/v1
+  #   api_key: EMPTY
+  #   protocols: [openai]
+  #   models:
+  #     small-model: { id: org/Small, context_window: 32768, max_output_tokens: 8192 }
