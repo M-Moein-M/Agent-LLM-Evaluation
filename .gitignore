@@ -1,62 +1,49 @@
 __pycache__/
 *.py[cod]
 *.pyd
-
 .venv/
+.venv*/
 venv/
 env/
-
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-
 dist/
 build/
 *.egg-info/
-
 .python-version
 .DS_Store
 
-*.sif
-
-traces/*
+# Local configuration and secrets (copy the *.example files)
+.env
+endpoints.yaml
+.run/
 models.json
-eval-*.out
+models.local.json*
 
-# Run outputs / analysis artifacts (generated per run, not source)
+# Container images and backups
+*.sif
+*.sif.*
+
+# Run outputs: new traces, your own results, logs, bulk input data
+traces/*
+!traces/.gitkeep
 results/
-report.md
-results.md
-agent_eval_report.html
-
-# SLURM/orchestrator logs at the repo root, and the per-job log dirs
-# packed-campaign scripts write (eval-<jobid>-groups/).
-smoke-*.out
-eval-*-groups/
-
-# Work-in-progress, deliberately kept out of git for now
-problems/MD-Bench/
-agents/apptainer/kimi/
-agents/apptainer/kimi-edited/
-
-# Large per-problem input data (downloaded via problems/<name>/download-input.sh)
+eval-logs/*
+!eval-logs/.gitkeep
 data/
-# pi agent local fork: now a git submodule (git.example.org/<user>/pi-edited,
-# branch step-limit-0.80.2). agent.def builds pi-dist/*.tgz from source inside
-# the container at image-build time; no tarballs are committed in the fork
-# anymore. Only the legacy archives stay ignored.
-agents/apptainer/pi/pi-edited.tar.gz
-agents/apptainer/pi/pi.tar.gz
+smoke-*.out
+tests/endpoint/last-run.md
 
-# claude-pro agent: subscription token + local build/run scratch (never commit)
+# Extracted trace release assets from reference-results
+reference-results/traces/
+
+# claude-pro agent: subscription token and local build/run scratch (never commit)
 agents/apptainer/claude-pro/.secrets/
 agents/apptainer/claude-pro/.setup-home/
 agents/apptainer/claude-pro/.cache/
 agents/apptainer/claude-pro/.work/
 
-# run artifacts: SLURM/orchestrator logs and the trace archive (never commit)
-logs/
-traces.tar
-
-# Real gateway credentials — never commit.
-models.local.json
+# Local tooling state
+.claude/
+reference-results/analysis/tokenizers/
