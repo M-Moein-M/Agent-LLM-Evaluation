@@ -9,7 +9,7 @@
 //
 //      void launchGemm(const float* dA, const float* dB, float* dC, int N);
 //
-//  What it does, for a single mode given on argv ("agent" | "cublas"):
+//  What it does, for a single mode given on argv ("agent" | "cublas" | "paired"):
 //    * builds one fixed, harness-controlled NxN workload (same seeds for both
 //      modes, so the two are bit-for-bit comparable),
 //    * (agent mode only) verifies the agent kernel's output against cuBLAS and
@@ -19,6 +19,13 @@
 //      window so nsys (run with --capture-range=cudaProfilerApi) reports ONLY
 //      the timed kernels — not warmup, not allocation, not the H2D copies,
 //    * prints a cudaEvent cross-check line "BENCH <mode> N=.. iters=.. ms_total=..".
+//
+//  Mode "paired" times both kernels in ONE process: PAIRED_REPS repetitions of
+//  [cuBLAS, agent, cuBLAS], each segment WARMUP + ITERS launches (cudaEvent).
+//  The cuBLAS time is constant on a free GPU, so the spread of its segments
+//  shows whether other work on the GPU disturbed the measurement. It prints
+//  "BENCH mse=<x>" and one line per repetition:
+//  "BENCH paired rep=<i> cublas_pre=<ms> agent=<ms> cublas_post=<ms>".
 //
 //  The grade is a RATIO of cuBLAS kernel time to agent kernel time on this same
 //  workload (see checks/tiled-gemm/check.py): it never assumes an operation
@@ -43,6 +50,7 @@
 static const int N = 4096;
 static const int ITERS = 50;
 static const int WARMUP = 5;
+static const int PAIRED_REPS = 3;
 
 #define CUDA_CHECK(call)                                                       \
     do {                                                                      \
@@ -85,12 +93,43 @@ static void cublasGemm(cublasHandle_t h, const float* dA, const float* dB,
                              dB, n, dA, n, &beta, dC, n));
 }
 
+// One paired-mode segment: WARMUP untimed launches, then ITERS timed ones.
+// Returns the total ms of the timed launches.
+static float timeSegment(bool agent, cublasHandle_t h, const float* dA,
+                         const float* dB, float* dC) {
+    for (int i = 0; i < WARMUP; ++i) {
+        if (agent) launchGemm(dA, dB, dC, N);
+        else       cublasGemm(h, dA, dB, dC, N);
+    }
+    CUDA_CHECK(cudaDeviceSynchronize());
+
+    cudaEvent_t a, b;
+    CUDA_CHECK(cudaEventCreate(&a));
+    CUDA_CHECK(cudaEventCreate(&b));
+    CUDA_CHECK(cudaEventRecord(a));
+    for (int i = 0; i < ITERS; ++i) {
+        if (agent) launchGemm(dA, dB, dC, N);
+        else       cublasGemm(h, dA, dB, dC, N);
+    }
+    // Covers a kernel launched on a stream other than the default one.
+    CUDA_CHECK(cudaDeviceSynchronize());
+    CUDA_CHECK(cudaEventRecord(b));
+    CUDA_CHECK(cudaEventSynchronize(b));
+
+    float ms = 0.0f;
+    CUDA_CHECK(cudaEventElapsedTime(&ms, a, b));
+    CUDA_CHECK(cudaEventDestroy(a));
+    CUDA_CHECK(cudaEventDestroy(b));
+    return ms;
+}
+
 int main(int argc, char** argv) {
     const char* mode = (argc > 1) ? argv[1] : "agent";
+    const bool is_paired = std::strcmp(mode, "paired") == 0;
     const bool is_agent = std::strcmp(mode, "agent") == 0;
     const bool is_cublas = std::strcmp(mode, "cublas") == 0;
-    if (!is_agent && !is_cublas) {
-        fprintf(stderr, "usage: %s agent|cublas\n", argv[0]);
+    if (!is_agent && !is_cublas && !is_paired) {
+        fprintf(stderr, "usage: %s agent|cublas|paired\n", argv[0]);
         return 2;
     }
 
@@ -110,11 +149,11 @@ int main(int argc, char** argv) {
     cublasHandle_t handle;
     CUBLAS_CHECK(cublasCreate(&handle));
 
-    // ---- correctness at the graded size (agent mode only) -----------------
+    // ---- correctness at the graded size (agent and paired mode) -----------
     // Compare the agent kernel against cuBLAS on identical inputs so a kernel
     // that is "fast" only because it is wrong (or loses accuracy under the
     // agent's own build flags) is caught here, not rewarded.
-    if (is_agent) {
+    if (is_agent || is_paired) {
         float* dRef;
         CUDA_CHECK(cudaMalloc(&dRef, bytes));
         cublasGemm(handle, dA, dB, dRef, N);
@@ -132,6 +171,23 @@ int main(int argc, char** argv) {
         }
         printf("BENCH mse=%.6e\n", s / (double)hRef.size());
         cudaFree(dRef);
+    }
+
+    // ---- paired mode: cuBLAS before and after the agent kernel -------------
+    if (is_paired) {
+        for (int r = 0; r < PAIRED_REPS; ++r) {
+            const float pre  = timeSegment(false, handle, dA, dB, dC);
+            const float ag   = timeSegment(true,  handle, dA, dB, dC);
+            const float post = timeSegment(false, handle, dA, dB, dC);
+            printf("BENCH paired rep=%d cublas_pre=%.3f agent=%.3f cublas_post=%.3f\n",
+                   r, pre, ag, post);
+            fflush(stdout);
+        }
+        cublasDestroy(handle);
+        cudaFree(dA);
+        cudaFree(dB);
+        cudaFree(dC);
+        return 0;
     }
 
     // ---- warmup (outside the profiler window) ------------------------------

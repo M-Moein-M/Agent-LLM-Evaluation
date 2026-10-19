@@ -23,6 +23,7 @@ verdicts over existing traces with no GPU re-run.
 """
 
 import csv
+import re
 
 from eval_lib import ProblemCheck, StageResult
 
@@ -38,6 +39,10 @@ class Check(ProblemCheck):
     # kernels; being a ratio it is GPU-independent (unlike the old fixed GFLOP/s
     # threshold). Tune against real runs.
     PERF_MIN_FRAC = 0.15
+    # Paired bench (.eval/perf_paired.log): cuBLAS is timed before and after the
+    # agent kernel. A spread (max/min - 1) of the cuBLAS segments above this
+    # marks the round "contended" in the detail. Reported, never gated.
+    PAIRED_MAX_SPREAD = 0.05
 
     def stages(self):
         return [self.build, self.run, self.mse, self.gpu, self.perf, self.metric]
@@ -103,14 +108,43 @@ class Check(ProblemCheck):
                     continue
         return total if seen else None
 
+    def _paired(self):
+        """Paired bench result: ``(agent_ms, cublas_ms, spread)`` or None.
+
+        agent_ms is the minimum over the repetitions, cublas_ms the minimum over
+        all cuBLAS segments, spread is max/min - 1 over the cuBLAS segments.
+        """
+        path = self.eval_dir / "perf_paired.log"
+        if not path.exists():
+            return None
+        text = path.read_text(encoding="utf-8", errors="replace")
+        reps = re.findall(r"BENCH paired rep=\d+ cublas_pre=([0-9.eE+-]+) "
+                          r"agent=([0-9.eE+-]+) cublas_post=([0-9.eE+-]+)", text)
+        try:
+            agent = [float(r[1]) for r in reps]
+            cublas = [float(x) for r in reps for x in (r[0], r[2])]
+        except ValueError:
+            return None
+        if not reps or min(agent) <= 0 or min(cublas) <= 0:
+            return None
+        return min(agent), min(cublas), max(cublas) / min(cublas) - 1.0
+
     def _cublas_frac(self):
         """Agent throughput as a fraction of cuBLAS: ``(frac, source)``.
 
-        Prefers nsys kernel time; falls back to the bench's cudaEvent ms_total
+        Prefers the paired bench when present, then nsys kernel time; falls back to the bench's cudaEvent ms_total
         if the nsys CSVs are absent. ``frac`` is None when neither is available
         (bench never built/ran). Shared by the ``perf`` gate and the ``metric``
         ranking stage so both always report the same number.
         """
+        paired = self._paired()
+        if paired is not None:
+            agent_ms, cublas_ms, spread = paired
+            source = "paired"
+            if spread > self.PAIRED_MAX_SPREAD:
+                source += f", contended: cuBLAS spread {spread * 100:.0f}%"
+            return cublas_ms / agent_ms, source
+
         agent_ns = self._kernel_total_ns("kern_agent.csv")
         cublas_ns = self._kernel_total_ns("kern_cublas.csv")
         source = "nsys"

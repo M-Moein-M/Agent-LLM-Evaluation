@@ -30,7 +30,7 @@ class Check(ProblemCheck):
     def metric(self) -> StageResult:
         # Ranking measurement (non-gating): reconstruction error against the
         # reference volume, same as LolaBunny. Compared only WITHIN this table.
-        v = self.log_value(r"Mean Squared Error:\s*([0-9.eE+-]+)")
+        v = self.log_value(r"(?<!Root )Mean Squared Error:\s*([0-9.eE+-]+)")
         return self.metric_stage("mse", v, "HU^2", higher_better=False)
 
     def build(self) -> StageResult:
@@ -40,7 +40,7 @@ class Check(ProblemCheck):
         return self.exit_stage("run", self.facts()["run"]["status"], fatal=True)
 
     def mse(self) -> StageResult:
-        v = self.log_value(r"Mean Squared Error:\s*([0-9.eE+-]+)")
+        v = self.log_value(r"(?<!Root )Mean Squared Error:\s*([0-9.eE+-]+)")
         passed = v is not None and v <= self.MSE_MAX
         if v is None:
             detail = "no 'Mean Squared Error' line found in run.log"

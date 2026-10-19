@@ -5,7 +5,7 @@ Walks the trace tree for every round (a dir containing ``.eval/facts.json``),
 loads that problem's ``checks/<PROBLEM>/check.py``, runs it against the round's
 ``.eval/`` evidence, and writes ``.eval/pass_result.json``.
 
-Pure stdlib, no Docker, no toolchain — it only reads the evidence files captured
+Pure stdlib, no toolchain — it only reads the evidence files captured
 by the container. Idempotent: re-run any time after editing a threshold to
 recompute verdicts with zero GPU cost.
 
@@ -13,11 +13,15 @@ recompute verdicts with zero GPU cost.
     python checks/check_pass.py --traces traces --problems RabbitCT-LolaBunny
 """
 
+from __future__ import annotations
+
 import argparse
 import importlib.util
 import json
 import sys
 from pathlib import Path
+
+import failure_class as fc
 
 
 def parse_args():
@@ -33,16 +37,23 @@ def parse_args():
         default=None,
         help="Comma-separated problem names to limit to (default: all found)",
     )
+    parser.add_argument(
+        "--campaign",
+        default=None,
+        help="Only rounds of this campaign dir name (traces/<P>/<agent>/<model>/<CAMPAIGN>/round-N); "
+             "avoids walking the whole trace tree",
+    )
     return parser.parse_args()
 
 
-def find_rounds(traces_root: Path):
+def find_rounds(traces_root: Path, campaign: str | None = None):
     """Yield (problem_name, eval_dir) for every round under the trace tree.
 
     Trace layout: traces/<PROBLEM>/<MODEL>/<DATE>/round-N/.eval/facts.json
     The problem name is the path segment directly under the trace root.
     """
-    for facts in traces_root.glob("**/.eval/facts.json"):
+    pattern = f"*/*/*/{campaign}/round-*/.eval/facts.json" if campaign else "**/.eval/facts.json"
+    for facts in traces_root.glob(pattern):
         eval_dir = facts.parent
         rel = eval_dir.relative_to(traces_root)
         if not rel.parts:
@@ -95,7 +106,7 @@ def main():
     checked = 0
     skipped = 0
     errored = 0
-    for problem, eval_dir in find_rounds(traces_root):
+    for problem, eval_dir in find_rounds(traces_root, args.campaign):
         if only and problem not in only:
             continue
 
@@ -113,13 +124,24 @@ def main():
             print(f"[ERROR] {eval_dir}: {type(exc).__name__}: {exc}", file=sys.stderr)
             errored += 1
             continue
-        out = eval_dir / "pass_result.json"
-        with open(out, "w", encoding="utf-8") as fh:
-            json.dump(verdict.to_dict(), fh, indent=2)
+        result = verdict.to_dict()
+        # Name the failure the way the reports do. The stage list alone says
+        # "build" for a round whose agent died before writing anything, which
+        # is where it was noticed, not where it broke. classify_artifact reads
+        # the receipts next to this file; the agent-side half of the reason
+        # (context overflow, format errors, ...) comes from stats.json and is
+        # merged in by collect_results.py.
+        if not verdict.passed:
+            klass, detail = fc.classify_artifact(eval_dir)
+            result["artifact_class"] = klass
+            result["artifact_detail"] = (detail or "")[:300] or None
+        with open(eval_dir / "pass_result.json", "w", encoding="utf-8") as fh:
+            json.dump(result, fh, indent=2)
 
         status = "PASS" if verdict.passed else "FAIL"
         failed = [s.name for s in verdict.stages if not s.passed and not s.skipped]
-        tail = f" ({', '.join(failed)})" if failed else ""
+        why = result.get("artifact_class") or ", ".join(failed)
+        tail = f" ({why})" if why else ""
         print(f"[{status}]{tail} {eval_dir}")
         checked += 1
 
