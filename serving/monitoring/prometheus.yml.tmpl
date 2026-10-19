@@ -1,0 +1,44 @@
+# Rendered by common/monitoring.sh (render_template) on every run, so the targets always
+# match the nodes the scheduler picked. Syntax: lines starting with '#' are dropped,
+# "# @if VAR" ... "# @endif" keeps a block when VAR is non-empty, "# @targets VAR" expands
+# the words of VAR into list items, "@{VAR}" is replaced by the value of VAR.
+#
+# The sglang job name and metric names follow sgl-project/sglang examples/monitoring, so the
+# official dashboard queries (no job= filter) work unchanged and several targets sum up.
+global:
+  scrape_interval: 5s
+  evaluation_interval: 30s
+scrape_configs:
+  - job_name: dcgm
+    static_configs:
+      - targets:
+# @targets DCGM_TARGETS
+# SGLANG_TARGETS is the engine /metrics port list: one port for a plain `sglang serve`,
+# or the worker ports (base+1 ...) under the router fleet, where the base port is the
+# router and has no sglang_* engine series.
+# @if SGLANG_TARGETS
+  - job_name: sglang
+    static_configs:
+      - targets:
+# @targets SGLANG_TARGETS
+# Different sglang builds disagree on the metric prefix: older and nightly images emit
+# 'sglang:foo', the official dashboard and newer releases expect 'sglang_foo'. Rewrite
+# __name__ at scrape time. It is a no-op if the metric already uses the underscore.
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: '^sglang:(.*)'
+        target_label: __name__
+        replacement: 'sglang_${1}'
+# @endif
+# sglang_router (fleet topology only) exports its own sgl_router_* series on a dedicated port.
+# @if SGLANG_ROUTER_METRICS_PORT
+  - job_name: sglang_router
+    static_configs:
+      - targets: ['localhost:@{SGLANG_ROUTER_METRICS_PORT}']
+# @endif
+# LiteLLM's own metrics, only when LITELLM_PROMETHEUS=1 (callback "prometheus").
+# @if LITELLM_PROM_SCRAPE
+  - job_name: litellm
+    static_configs:
+      - targets: ['localhost:@{LITELLM_PORT}']
+# @endif

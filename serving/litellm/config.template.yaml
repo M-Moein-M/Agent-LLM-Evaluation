@@ -1,0 +1,107 @@
+# LiteLLM proxy: a single permanent front door (port 30000) for whatever model
+# sglang is currently serving. Clients ALWAYS connect to :30000 and never change.
+#
+#   OpenAI clients:      :30000/v1/chat/completions  -> passthrough
+#   Anthropic client:    :30000/v1/messages          -> translated
+#       ... both forwarded to the active sglang (or sglang_router) internal port.
+#
+# Why the shim at all: Claude Code only speaks the Anthropic /v1/messages API, and
+# sglang's own Anthropic handler 400s on its request shape. LiteLLM translates
+# Anthropic->OpenAI and forwards to the route that works.
+#
+# This is a template. common/litellm.sh renders it per job (see "@" markers below) and
+# copies reasoning_bridge.py next to the rendered file, because LiteLLM resolves the
+# callback module relative to the config directory.
+#
+# DYNAMIC: the config is not edited per model. start_litellm exports MODEL_TAG and the
+# backend port as the LITELLM_* env vars below and LiteLLM substitutes os.environ/...
+# at startup. Switching models = launching a different models/<name>.sh.
+#
+# Authentication: master_key is optional. The two lines marked "@master_key" are removed
+# unless LITELLM_MASTER_KEY is set. Raw sglang ignores API keys, so without a key the proxy
+# is as open as sglang is and should only be reachable on-node or through an ssh tunnel.
+# LiteLLM 1.104.x refuses to start without a key unless
+# LITELLM_DANGEROUSLY_PERMIT_WEAK_OR_UNSET_MASTER_KEY=true is set (this stack runs 1.89.4).
+
+model_list:
+  # Public id advertised on /v1/models == the active model's MODEL_TAG.
+  - model_name: os.environ/LITELLM_MODEL_NAME
+    litellm_params: &active
+      model: os.environ/LITELLM_BACKEND_MODEL   # openai/<MODEL_TAG>, fwd as served-model-name
+      api_base: os.environ/LITELLM_API_BASE     # http://localhost:<backend port>/v1
+      api_key: dummy
+      # Keep false. With true, LiteLLM makes the backend call non-streaming and replays SSE
+      # from the buffered reply, so no byte reaches the client until the whole reply is
+      # done. Node-based agent clients (kimi, claude) give up after ~300 s of silence and
+      # retry the same long generation until the round limit. The cost of false: sglang's
+      # per-model streaming tool-call parsers (for example gemma4) can drop trailing
+      # arguments when generation is cut off mid-buffer. On the &active anchor shared by
+      # all model_list entries, so it applies to every model.
+      fake_stream: false
+      # No output cap: the client's max_tokens / max_completion_tokens are stripped on
+      # both routes (/v1/chat/completions and the translated /v1/messages), and nothing
+      # re-adds one. sglang then fills max_new_tokens = context_len - input_len - 1
+      # (scheduler.init_req_max_new_tokens), so a reply ends at the window with
+      # finish_reason "length" and the next call gets sglang's context 400. The
+      # window is sglang --context-length, reported as max_input_tokens below.
+      additional_drop_params: ["max_tokens", "max_completion_tokens"]
+      # One call may generate up to the full window: ~20 min on a 35B-A3B MoE, over an hour
+      # on dense 27B/31B models. Keep these above the longest expected generation. The
+      # sglang_router --request-timeout-secs must be at least as large: its default of
+      # 1800 s cut streams silently at 30 min (LiteLLM then closed them as a normal stop).
+      timeout: 14400
+      stream_timeout: 14400
+    model_info: &noreason
+      max_input_tokens: os.environ/LITELLM_CTX_SIZE   # sglang --context-length; exported by start_litellm. Read via GET /model_group/info (number) or /model/info (string)
+      # Second, independent responses-API trapdoor: even after the flag below
+      # sends /v1/messages down the chat/completions path,
+      # _route_openai_thinking_to_responses_api_if_needed (adapters/handler.py:352)
+      # re-prefixes the model with "responses/" whenever provider == openai and
+      # the client sends thinking:{type:enabled} -- which Claude Code always
+      # does. Its only escape hatch is model_info.supports_reasoning == False,
+      # so declare it here. It suppresses no reasoning: the backend still
+      # returns reasoning_content, merged below as <think>...</think>.
+      supports_reasoning: false
+
+  # Anthropic-only variant of the same backend, advertised as <MODEL_TAG>-think.
+  # LiteLLM's Anthropic SSE adapter hardcodes an empty text block at index 0
+  # before reading any chunk (streaming_iterator.py:315), so a thinking block
+  # lands at index 1 and Claude Code aborts with "Content block is not a
+  # thinking block". merge_reasoning_content_in_choices folds reasoning_content
+  # back into content as <think>...</think>, so no thinking block is ever
+  # emitted and that path is never entered. chat_template_kwargs enables
+  # thinking server-side, since Claude Code cannot send it and drop_params
+  # discards the Anthropic `thinking` param.
+  - model_name: os.environ/LITELLM_MODEL_NAME_THINK
+    litellm_params:
+      <<: *active
+      merge_reasoning_content_in_choices: true
+      extra_body:
+        chat_template_kwargs:
+          thinking: true
+    model_info: *noreason
+
+  # Catch-all: any other requested id (a slug variant, or Claude Code's
+  # small-fast/background model) also lands on the active backend.
+  - model_name: "*"
+    litellm_params: *active
+    model_info: *noreason
+
+litellm_settings:
+  drop_params: true             # silently drop params sglang does not accept
+  request_timeout: 14400        # 4h: one uncapped call can run to the full context window (s)
+  # Anthropic /v1/messages -> OpenAI: force the chat/completions adapter. By
+  # default litellm routes the "openai" provider through the Responses API
+  # (/v1/responses), which sglang does not implement -> 500. This flag makes the
+  # Claude Code (Anthropic) path use /v1/chat/completions, which sglang serves.
+  use_chat_completions_url_for_anthropic_messages: true
+  # Reasoning models (Kimi K2.x) need reasoning_content echoed back on
+  # assistant tool-call turns or the backend's reasoning parser degenerates
+  # into reasoning-only loops (APIEmptyResponseError). Clients routinely
+  # drop/rename this field; reasoning_bridge.py restores it. See file for
+  # the full mechanism. With LITELLM_PROMETHEUS=1, start_litellm appends "prometheus"
+  # to this list (the "@callbacks" marker); the default is the bridge alone.
+  callbacks: ["reasoning_bridge.proxy_handler_instance"]  # @callbacks
+
+general_settings:  # @master_key
+  master_key: os.environ/LITELLM_MASTER_KEY  # @master_key

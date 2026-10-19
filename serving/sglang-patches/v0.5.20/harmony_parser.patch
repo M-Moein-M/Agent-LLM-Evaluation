@@ -1,0 +1,121 @@
+--- a/python/sglang/srt/parser/harmony_parser.py
++++ b/python/sglang/srt/parser/harmony_parser.py
+@@ -1,3 +1,4 @@
++import json  # LOCAL PATCH: used by HarmonyParser._repair at the end of the file
+ import re
+ from dataclasses import dataclass
+ from typing import Iterator, List, Optional, Tuple
+@@ -586,3 +587,113 @@
+             filtered_events.append(event)
+ 
+         return filtered_events
++
++
++# ---------------------------------------------------------------------------------------
++# LOCAL PATCH (sglang 0.5.20). The stock parser above recognises a tool call only as
++#   <|start|>assistant<|channel|>commentary to=functions.NAME <|constrain|>json<|message|>
++# gpt-oss-120b also writes the header in other shapes (measured on 3000 samples of one
++# tool-chain step: 0.5% used the analysis channel, some with "code" or no content type).
++# Those calls were dropped: empty reply when streaming, raw harmony text in content
++# otherwise. The subclass rewrites every message header that carries a functions.*
++# recipient into the one shape the stock code handles, before the stock code sees it.
++# Only headers are touched (text between <|start|> / <|channel|> and <|message|>).
++_StockHarmonyParser = HarmonyParser
++
++
++class HarmonyParser(_StockHarmonyParser):
++    _HEADER_STARTS = ("<|start|>", "<|channel|>")
++    _HEADER_END = "<|message|>"
++    _RECIPIENT = re.compile(r"to=(functions\.[A-Za-z0-9_.\-]+)")
++
++    _BODY_ENDS = ("<|call|>", "<|end|>", "<|return|>")
++    _NO_MESSAGE = re.compile(
++        r"(?:<\|start\|>\s*assistant)?\s*(?:<\|channel\|>\s*(analysis|commentary|final)?)?"
++    )
++
++    _PLAIN_ANALYSIS = re.compile(
++        r"(?:<\|start\|>\s*assistant)?\s*<\|channel\|>\s*analysis\s*<\|message\|>"
++    )
++
++    def __init__(self):
++        super().__init__()
++        self._held = ""  # header text whose <|message|> has not arrived yet
++
++    def _repair(self, block: str) -> str:
++        """Rebuild a message that has no <|message|> token (block = header + body)."""
++        recipient = self._RECIPIENT.search(block)
++        if recipient:
++            # a tool call: the arguments start at the first "{" after the recipient
++            brace = block.find("{", recipient.end())
++            body = block[brace:] if brace != -1 else ""
++            try:
++                # keep the first complete JSON value, drop what follows: ({"city": "Tokyo"})
++                body = body[: json.JSONDecoder().raw_decode(body)[1]]
++            except ValueError:
++                pass
++            return (
++                f"<|start|>assistant<|channel|>commentary to={recipient.group(1)} "
++                f"<|constrain|>json<|message|>{body}"
++            )
++        m = self._NO_MESSAGE.match(block)
++        body = block[m.end() :].replace("<|constrain|>", "")
++        return f"<|start|>assistant<|channel|>{m.group(1) or 'commentary'}<|message|>{body}"
++
++    def _normalize(self, chunk: str) -> str:
++        data, self._held = self._held + chunk, ""
++        out, pos = [], 0
++        while True:
++            starts = [i for i in (data.find(t, pos) for t in self._HEADER_STARTS) if i != -1]
++            if not starts:
++                tail = data[pos:]
++                # keep back a trailing fragment that may be the start of a header token
++                for n in range(min(len(tail), 10), 0, -1):
++                    if any(t.startswith(tail[-n:]) for t in self._HEADER_STARTS):
++                        tail, self._held = tail[:-n], tail[-n:]
++                        break
++                out.append(tail)
++                break
++            start = min(starts)
++            end = data.find(self._HEADER_END, start)
++            stops = [i for i in (data.find(t, start) for t in self._BODY_ENDS) if i != -1]
++            stop = min(stops) if stops else -1
++            out.append(data[pos:start])
++            if stop != -1 and (end == -1 or stop < end):
++                # The message ended without a <|message|> token, e.g.
++                #   <|channel|>commentary to=functions.NAME{"city":"Tokyo"}<|call|>
++                # (2 of 40,000 sampled replies). The stock code waits for <|message|>
++                # forever and drops the message, so put the token back.
++                out.append(self._repair(data[start:stop]))
++                pos = stop
++                continue
++            if end == -1:
++                self._held = data[start:]
++                break
++            end += len(self._HEADER_END)
++            header = data[start:end]
++            recipient = self._RECIPIENT.search(header)
++            if recipient:
++                header = (
++                    f"<|start|>assistant<|channel|>commentary to={recipient.group(1)} "
++                    f"<|constrain|>json<|message|>"
++                )
++            out.append(header)
++            pos = end
++        return "".join(out)
++
++    def parse(self, chunk: str) -> List[Event]:
++        if chunk == "":
++            # flush call: release whatever is still held, unchanged
++            text, self._held = self._held, ""
++        else:
++            text = self._normalize(chunk)
++        events = super().parse(text)
++        for event in events:
++            # An analysis message with no recipient that ends in <|call|> names no
++            # function, so it is reasoning. As a "tool_call" it came out as raw harmony
++            # text in content (non-stream) or split between reasoning and content (stream).
++            if event.event_type == "tool_call" and self._PLAIN_ANALYSIS.match(
++                event.raw_text or ""
++            ):
++                event.event_type, event.raw_text = "reasoning", None
++        return events

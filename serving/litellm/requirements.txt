@@ -1,0 +1,3 @@
+# Pinned LiteLLM proxy. requirements.lock.txt is the full pip freeze of the venv this stack was run with (python 3.12).
+# After installing, run litellm/apply_patches.sh to apply patches/streaming_iterator-1.89.4.patch.
+litellm[proxy]==1.89.4

@@ -1,0 +1,121 @@
+--- a/python/sglang/srt/function_call/gpt_oss_detector.py
++++ b/python/sglang/srt/function_call/gpt_oss_detector.py
+@@ -38,7 +38,9 @@
+ 
+     def has_tool_call(self, text: str) -> bool:
+         """Check if text contains TypeScript-style function call markers."""
+-        return self.bot_token in text
++        # LOCAL PATCH: any message ending in <|call|> goes through the parser, so an
++        # analysis-channel "call" without recipient is not returned as raw harmony text
++        return self.bot_token in text or "<|call|>" in text
+ 
+     def detect_and_parse(self, text: str, tools: List[Tool]) -> StreamingParseResult:
+         """Parse TypeScript-style function calls from complete text."""
+@@ -66,6 +68,9 @@
+                 if tool_call:
+                     calls.append(tool_call)
+                     tool_index += 1
++                else:
++                    # LOCAL PATCH: see "unparsed call" note at the end of the class
++                    normal_parts.append(event.content)
+             elif event.event_type == "normal":
+                 normal_parts.append(event.content)
+             # Ignore reasoning events in function call context
+@@ -109,6 +114,8 @@
+         if (
+             "<|channel|>commentary to=" not in self._buffer
+             and not self.current_tool_name_sent
++            # LOCAL PATCH: a call message always takes the tool path below
++            and not any(e.event_type == "tool_call" for e in events)
+         ):
+             # No tool calls detected, check for final content
+             if (
+@@ -185,6 +192,9 @@
+                     # Move to next tool
+                     self.current_tool_id += 1
+                     self.current_tool_name_sent = False
++                else:
++                    # LOCAL PATCH: see "unparsed call" note at the end of the class
++                    normal_text += event.content
+ 
+             elif event.event_type == "normal":
+                 normal_text += event.content
+@@ -206,7 +216,8 @@
+ 
+         if not match:
+             logger.debug(f"Could not extract tool call from: {content[:100]}")
+-            return None
++            # LOCAL PATCH: no recipient in the header, the body may be the call itself
++            return self._call_from_json_body(content, tool_indices, tool_index)
+ 
+         full_function_name = match.group(1)
+         json_content = match.group(2)
+@@ -218,6 +229,15 @@
+             else full_function_name
+         )
+ 
++        # LOCAL PATCH: the model sometimes glues the content type to the recipient
++        # ("functions.get_weather.json"). Use the longest dotted prefix that is a tool.
++        if function_name not in tool_indices:
++            rest = full_function_name.removeprefix("functions.")
++            while "." in rest and rest not in tool_indices:
++                rest = rest.rsplit(".", 1)[0]
++            if rest in tool_indices:
++                function_name = rest
++
+         # Check if tool exists
+         if function_name not in tool_indices:
+             logger.debug(f"Function {function_name} not in available tools")
+@@ -237,6 +257,52 @@
+             parameters=json.dumps(arguments, ensure_ascii=False),
+         )
+ 
++    def _call_from_json_body(
++        self, content: str, tool_indices: dict, tool_index: int
++    ) -> Optional[ToolCallItem]:
++        """
++        LOCAL PATCH: a message ending in <|call|> with no to=functions.X recipient whose
++        body is {"name": "get_weather", "arguments": {...}} (3 of 16,000 sampled
++        first-turn replies). Accepted only if name is a tool of the request.
++        """
++        body = content.split("<|message|>", 1)[-1].split("<|call|>", 1)[0]
++        try:
++            call = json.loads(body)
++        except json.JSONDecodeError:
++            return None
++        if not isinstance(call, dict) or not isinstance(call.get("name"), str):
++            return None
++        name = call["name"].removeprefix("functions.")
++        arguments = call.get("arguments", call.get("parameters"))
++        if name not in tool_indices or not isinstance(arguments, dict):
++            return None
++        return ToolCallItem(
++            tool_index=tool_index,
++            name=name,
++            parameters=json.dumps(arguments, ensure_ascii=False),
++        )
++
++    # LOCAL PATCH (sglang 0.5.20): the grammar constraint sglang builds for harmony
++    # ends generation right after the analysis message, so tool_choice "required"/named
++    # and tools with strict=true came back as an empty reply with no tool call. These
++    # three overrides skip the constraint and parse the model's own harmony tool call,
++    # as tool_choice "auto" already does. Cost: the forced call is not grammar-enforced.
++    #
++    # LOCAL PATCH, "unparsed call": a message ending in <|call|> that cannot become a
++    # tool call (no to=functions.X recipient, a function that is not in the request's
++    # tools, or arguments that are not valid JSON) was dropped, so the client got an
++    # empty reply. The three marked places above return the message body as normal
++    # content instead. Seen locally: 2 of 24,000 sampled tool-chain replies had no
++    # recipient (the model repeated the tool result as a "call").
++    def supports_structural_tag(self) -> bool:
++        return False
++
++    def parses_required_natively(self) -> bool:
++        return True
++
++    def get_structural_tag(self, *args, **kwargs):
++        return None
++
+     def structure_info(self) -> _GetInfoFunc:
+         raise NotImplementedError("structure_info not used with HarmonyParser")
+ 
