@@ -1,0 +1,62 @@
+{
+  "passed": true,
+  "stages": [
+    {
+      "name": "build",
+      "passed": true,
+      "value": 0,
+      "detail": "exit code 0",
+      "fatal": true,
+      "skipped": false
+    },
+    {
+      "name": "run",
+      "passed": true,
+      "value": 0,
+      "detail": "exit code 0",
+      "fatal": true,
+      "skipped": false
+    },
+    {
+      "name": "mse",
+      "passed": true,
+      "value": 5.249459e-12,
+      "detail": "mse 5.24946e-12 <= 0.01",
+      "fatal": false,
+      "skipped": false
+    },
+    {
+      "name": "gpu",
+      "passed": true,
+      "value": {
+        "avg": 80.06666666666666,
+        "peak": 100.0,
+        "samples": 15
+      },
+      "detail": "peak 100% (>= 40.0), avg 80.1% (reported), 15 samples",
+      "fatal": false,
+      "skipped": false
+    },
+    {
+      "name": "perf",
+      "passed": true,
+      "value": 0.6043975014286621,
+      "detail": "60.4% of cuBLAS (paired; >= 15%), bench MSE 0",
+      "fatal": false,
+      "skipped": false
+    },
+    {
+      "name": "metric",
+      "passed": true,
+      "value": {
+        "metric": "cublas_frac",
+        "value": 0.6043975014286621,
+        "unit": "x cuBLAS",
+        "higher_better": true
+      },
+      "detail": "cublas_frac = 0.604398 x cuBLAS",
+      "fatal": false,
+      "skipped": false
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+# Hand-authored annotations merged into the HTML report at render time.
+#
+# This file is the ONLY source of report notes. It is never generated — unlike
+# runs.jsonl / summary.json (rebuilt from traces/ by collect_results.py), so
+# notes here are never clobbered. checks/report_html.py joins each note to a
+# table cell by key.
+#
+# Each entry matches on any subset of {agent, model, problem}. A note with more
+# keys is more specific; for a given cell the most-specific match wins (ties ->
+# first in file). Notes without `problem` apply to the pass@1 matrix row AND to
+# every per-problem row for that agent+model unless a problem-specific note
+# overrides. Keep notes SHORT and factual — no sentences, no narration.
+#
+#   agent   : pi | swe-mini | claude | claude-pro | kimi
+#   model   : normalized id (final path segment), e.g. Kimi-K2.7-Code
+#   problem : RabbitCT-LolaBunny | RabbitCT-LolaOMP | stream-compact | tiled-gemm
+
+notes:
+  # --- serving / endpoint caveats -----------------------------------------
+  - { agent: swe-mini, model: Kimi-K2.7-Code, note: "self-hosted sglang endpoint" }
+  - { agent: pi,       model: DeepSeek-V4-Flash, note: "self-hosted .37 endpoint" }
+  - { agent: claude,   model: DeepSeek-V4-Flash, note: "self-hosted .37 endpoint; usage=0" }
+  - { agent: claude,   model: Qwen3.6-27B, note: "self-hosted .177 litellm shim; usage=0" }
+
+  # --- frontier / subscription --------------------------------------------
+  - { agent: claude-pro, model: claude-opus-4-8, note: "subscription; 5 rounds/problem; frontier; stream underreports output_tokens" }
+  - { agent: claude-pro, model: claude-opus-4-8, problem: RabbitCT-LolaOMP, note: "fp32 kernel vs fp64 reference" }
+
+  # --- tool-call serialization artifacts (0/N, not capability) ------------
+  - { agent: claude, model: gemma-4-31B-it-FP8-block, note: "malformed tool-call text -> no solution.json" }
+  - { agent: pi,     model: gemma-4-31B-it-FP8-block, note: "malformed tool-call text -> no solution.json" }
+  - { agent: swe-mini, model: gemma-4-31B-it-FP8-block, note: "text protocol; immune to tool-call bug" }
+  - { agent: swe-mini, model: gpt-oss-120b, note: "text-mode; tool-call RepeatedFormatError" }
+
+  # --- client-config artifact (unmeasured, not capability) ----------------
+  - { agent: pi, model: Kimi-K2.7-Code, note: "contextWindow > 256K cap -> empty response; unmeasured" }
+
+  # --- per-problem failure signatures -------------------------------------
+  - { agent: claude, model: Qwen3.6-27B, problem: RabbitCT-LolaOMP, note: "loses at gpu stage (under-uses GPU)" }

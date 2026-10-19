@@ -1,0 +1,147 @@
+Only in /tmp/4303942.cluster/tmp.T9mLxY2f1p/work/Qwen_Qwen3.6-35B-A3B-FP8/round-3/tiled-gemm/: agent.kimi-wire
+Only in /tmp/4303942.cluster/tmp.T9mLxY2f1p/work/Qwen_Qwen3.6-35B-A3B-FP8/round-3/tiled-gemm/: agent.stderr.log
+Only in /tmp/4303942.cluster/tmp.T9mLxY2f1p/work/Qwen_Qwen3.6-35B-A3B-FP8/round-3/tiled-gemm/: agent.stream.jsonl
+Only in /tmp/4303942.cluster/tmp.T9mLxY2f1p/work/Qwen_Qwen3.6-35B-A3B-FP8/round-3/tiled-gemm/: .eval
+Only in /tmp/4303942.cluster/tmp.T9mLxY2f1p/work/Qwen_Qwen3.6-35B-A3B-FP8/round-3/tiled-gemm/: gemm
+diff -ru '--exclude=.git' <repo>/problems/tiled-gemm/Makefile /tmp/4303942.cluster/tmp.T9mLxY2f1p/work/Qwen_Qwen3.6-35B-A3B-FP8/round-3/tiled-gemm/Makefile
+--- <repo>/problems/tiled-gemm/Makefile	2026-07-05 23:48:43.000000000 +0200
++++ /tmp/4303942.cluster/tmp.T9mLxY2f1p/work/Qwen_Qwen3.6-35B-A3B-FP8/round-3/tiled-gemm/Makefile	2026-09-24 14:10:38.114481408 +0200
+@@ -1,7 +1,7 @@
+ NVCC      ?= nvcc
+-NVCCFLAGS ?= -O3 -std=c++14
+-# Optional: override to target a specific GPU, e.g. ARCH="-arch=sm_80"
+-ARCH      ?=
++NVCCFLAGS ?= -O3 -std=c++14 -Xptxas -O3
++# Target A40 (Ampere, sm_86)
++ARCH      ?= -arch=sm_86
+ 
+ gemm: src/main.cu src/gemm.cu src/gemm.cuh
+ 	$(NVCC) $(NVCCFLAGS) $(ARCH) src/main.cu src/gemm.cu -o gemm
+Only in <repo>/problems/tiled-gemm/: PROMPT.md
+diff -ru '--exclude=.git' <repo>/problems/tiled-gemm/src/gemm.cu /tmp/4303942.cluster/tmp.T9mLxY2f1p/work/Qwen_Qwen3.6-35B-A3B-FP8/round-3/tiled-gemm/src/gemm.cu
+--- <repo>/problems/tiled-gemm/src/gemm.cu	2026-07-05 23:48:43.000000000 +0200
++++ /tmp/4303942.cluster/tmp.T9mLxY2f1p/work/Qwen_Qwen3.6-35B-A3B-FP8/round-3/tiled-gemm/src/gemm.cu	2026-09-24 14:47:39.281340776 +0200
+@@ -2,46 +2,89 @@
+ 
+ #include <cuda_runtime.h>
+ 
+-// Edge length of a square thread-block tile. Each block cooperatively loads a
+-// TILE x TILE sub-block of A and B into shared memory, multiplies them, and
+-// accumulates into the corresponding tile of C.
+-#define TILE 16
+-
+-// Classic shared-memory tiled matrix multiply. The kernel is written to handle
+-// matrices whose dimensions are not a multiple of TILE: every global load is
+-// guarded so out-of-range elements read as zero, and the final store is masked
+-// by `row < N && col < N`.
+-__global__ void gemmKernel(const float* A, const float* B, float* C, int N) {
+-    __shared__ float As[TILE][TILE];
+-    __shared__ float Bs[TILE][TILE];
+-
+-    const int row = blockIdx.y * TILE + threadIdx.y;
+-    const int col = blockIdx.x * TILE + threadIdx.x;
+-    const int numTiles = (N + TILE - 1) / TILE;
+-
+-    float acc = 0.0f;
+-    for (int t = 0; t < numTiles; ++t) {
+-        const int aCol = t * TILE + threadIdx.x;
+-        const int bRow = t * TILE + threadIdx.y;
+-
+-        As[threadIdx.y][threadIdx.x] =
+-            (row < N && aCol < N) ? A[row * N + aCol] : 0.0f;
+-        Bs[threadIdx.y][threadIdx.x] =
+-            (bRow < N && col < N) ? B[bRow * N + col] : 0.0f;
++// Block: 16x16=256 threads, each computes 2x2 output.
++// Output tile: 32x32 per block. Shared: As[32][32], Bs[32][32].
++// K=64, pipelined: 1 sync per K-tile.
++// Pipeline structure:
++//   Load tile 0 before loop
++//   For each tile: compute tile t, then load tile t+1, then sync
++// This works because we only ever need 1 shared memory tile at a time.
++
++#define K 32
++#define OM 32
++#define ON 32
++
++__shared__ float As[OM][K];
++__shared__ float Bs[K][ON];
++
++__global__ void gemmKernel(const float* __restrict__ A,
++                           const float* __restrict__ B,
++                           float* __restrict__ C,
++                           int N)
++{
++    const int br = blockIdx.y * OM;
++    const int bc = blockIdx.x * ON;
++    const int nt = (N + K - 1) / K;
++
++    const int ty = threadIdx.y;
++    const int tx = threadIdx.x;
++
++    const int r0 = br + ty;
++    const int r1 = br + ty + 16;
++    const int c0 = bc + tx * 2;
++    const int c1 = bc + tx * 2 + 1;
++
++    float s00 = 0.0f, s01 = 0.0f;
++    float s10 = 0.0f, s11 = 0.0f;
++
++    // Load tile 0
++    {
++        As[ty][tx * 2]     = (r0 < N && tx * 2 < N) ? A[r0 * N + tx * 2] : 0.0f;
++        As[ty][tx * 2 + 1] = (r0 < N && tx * 2 + 1 < N) ? A[r0 * N + tx * 2 + 1] : 0.0f;
++        As[ty + 16][tx * 2]     = (r1 < N && tx * 2 < N) ? A[r1 * N + tx * 2] : 0.0f;
++        As[ty + 16][tx * 2 + 1] = (r1 < N && tx * 2 + 1 < N) ? A[r1 * N + tx * 2 + 1] : 0.0f;
++        Bs[ty][tx * 2]     = (ty < N && c0 < N) ? B[ty * N + c0] : 0.0f;
++        Bs[ty][tx * 2 + 1] = (ty < N && c1 < N) ? B[ty * N + c1] : 0.0f;
++        Bs[ty + 16][tx * 2]     = (ty + 16 < N && c0 < N) ? B[(ty + 16) * N + c0] : 0.0f;
++        Bs[ty + 16][tx * 2 + 1] = (ty + 16 < N && c1 < N) ? B[(ty + 16) * N + c1] : 0.0f;
+         __syncthreads();
++    }
+ 
+-#pragma unroll
+-        for (int k = 0; k < TILE; ++k)
+-            acc += As[threadIdx.y][k] * Bs[k][threadIdx.x];
+-        __syncthreads();
++    for (int t = 0; t < nt; ++t) {
++        // Compute tile t
++        #pragma unroll 32
++        for (int k = 0; k < K; ++k) {
++            s00 += As[ty][k] * Bs[k][tx * 2];
++            s01 += As[ty][k] * Bs[k][tx * 2 + 1];
++            s10 += As[ty + 16][k] * Bs[k][tx * 2];
++            s11 += As[ty + 16][k] * Bs[k][tx * 2 + 1];
++        }
++
++        // Pipeline: load next tile
++        if (t + 1 < nt) {
++            int kNext = (t + 1) * K;
++            As[ty][tx * 2]     = (r0 < N && kNext + tx * 2 < N) ? A[r0 * N + kNext + tx * 2] : 0.0f;
++            As[ty][tx * 2 + 1] = (r0 < N && kNext + tx * 2 + 1 < N) ? A[r0 * N + kNext + tx * 2 + 1] : 0.0f;
++            As[ty + 16][tx * 2]     = (r1 < N && kNext + tx * 2 < N) ? A[r1 * N + kNext + tx * 2] : 0.0f;
++            As[ty + 16][tx * 2 + 1] = (r1 < N && kNext + tx * 2 + 1 < N) ? A[r1 * N + kNext + tx * 2 + 1] : 0.0f;
++            Bs[ty][tx * 2]     = (kNext + ty < N && c0 < N) ? B[(kNext + ty) * N + c0] : 0.0f;
++            Bs[ty][tx * 2 + 1] = (kNext + ty < N && c1 < N) ? B[(kNext + ty) * N + c1] : 0.0f;
++            Bs[ty + 16][tx * 2]     = (kNext + ty + 16 < N && c0 < N) ? B[(kNext + ty + 16) * N + c0] : 0.0f;
++            Bs[ty + 16][tx * 2 + 1] = (kNext + ty + 16 < N && c1 < N) ? B[(kNext + ty + 16) * N + c1] : 0.0f;
++            __syncthreads();
++        }
+     }
+ 
+-    if (row < N && col < N)
+-        C[row * N + col] = acc;
++    if (r0 < N && c0 < N) C[r0 * N + c0] = s00;
++    if (r0 < N && c1 < N) C[r0 * N + c1] = s01;
++    if (r1 < N && c0 < N) C[r1 * N + c0] = s10;
++    if (r1 < N && c1 < N) C[r1 * N + c1] = s11;
+ }
+ 
+ void launchGemm(const float* dA, const float* dB, float* dC, int N) {
+-    dim3 block(TILE, TILE);
+-    dim3 grid(N / TILE, N / TILE);  // one block per output tile
++    int gx = (N + ON - 1) / ON;
++    int gy = (N + OM - 1) / OM;
++    dim3 block(16, 16);
++    dim3 grid(gx, gy);
+     gemmKernel<<<grid, block>>>(dA, dB, dC, N);
+ }

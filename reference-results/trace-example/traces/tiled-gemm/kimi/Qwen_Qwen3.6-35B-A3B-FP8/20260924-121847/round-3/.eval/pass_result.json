@@ -1,0 +1,55 @@
+{
+  "passed": false,
+  "stages": [
+    {
+      "name": "build",
+      "passed": false,
+      "value": 1,
+      "detail": "exit code 1",
+      "fatal": true,
+      "skipped": false
+    },
+    {
+      "name": "run",
+      "passed": false,
+      "value": null,
+      "detail": "skipped (earlier fatal stage failed)",
+      "fatal": false,
+      "skipped": true
+    },
+    {
+      "name": "mse",
+      "passed": false,
+      "value": null,
+      "detail": "skipped (earlier fatal stage failed)",
+      "fatal": false,
+      "skipped": true
+    },
+    {
+      "name": "gpu",
+      "passed": false,
+      "value": null,
+      "detail": "skipped (earlier fatal stage failed)",
+      "fatal": false,
+      "skipped": true
+    },
+    {
+      "name": "perf",
+      "passed": false,
+      "value": null,
+      "detail": "skipped (earlier fatal stage failed)",
+      "fatal": false,
+      "skipped": true
+    },
+    {
+      "name": "metric",
+      "passed": false,
+      "value": null,
+      "detail": "skipped (earlier fatal stage failed)",
+      "fatal": false,
+      "skipped": true
+    }
+  ],
+  "artifact_class": "no_solution",
+  "artifact_detail": "No solution.json produced"
+}

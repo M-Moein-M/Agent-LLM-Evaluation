@@ -1,0 +1,21 @@
+{
+  "agent": "pi",
+  "source": "agent.jsonl",
+  "end_reason": "completed",
+  "end_severity": "ok",
+  "end_stop_reason": "stop",
+  "end_detail": null,
+  "end_tokens_used": null,
+  "end_tokens_limit": null,
+  "total_input": 14577120,
+  "total_output": 189327,
+  "total_tokens": 14766447,
+  "turns": 110,
+  "steps": 115,
+  "capped_calls": 0,
+  "capped_ctx": [],
+  "empty_reply_nudges": null,
+  "peak_context": 214612,
+  "compacted": false,
+  "compaction_points": []
+}

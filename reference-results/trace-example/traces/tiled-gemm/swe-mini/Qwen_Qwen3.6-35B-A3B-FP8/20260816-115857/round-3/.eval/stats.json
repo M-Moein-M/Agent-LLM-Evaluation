@@ -1,0 +1,21 @@
+{
+  "agent": "swe-mini",
+  "source": "agent.traj.json",
+  "end_reason": "completed",
+  "end_severity": "ok",
+  "end_stop_reason": "Submitted",
+  "end_detail": null,
+  "end_tokens_used": null,
+  "end_tokens_limit": null,
+  "total_input": 7781753,
+  "total_output": 132670,
+  "total_tokens": 7914423,
+  "turns": 100,
+  "steps": 100,
+  "capped_calls": 0,
+  "capped_ctx": [],
+  "empty_reply_nudges": null,
+  "peak_context": 151110,
+  "compacted": false,
+  "compaction_points": []
+}

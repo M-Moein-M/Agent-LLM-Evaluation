@@ -1,0 +1,21 @@
+{
+  "agent": "claude",
+  "source": "agent.stream.jsonl",
+  "end_reason": "completed",
+  "end_severity": "ok",
+  "end_stop_reason": "completed",
+  "end_detail": null,
+  "end_tokens_used": null,
+  "end_tokens_limit": null,
+  "total_input": 54992,
+  "total_output": 499,
+  "total_tokens": 55491,
+  "turns": 5,
+  "steps": 7,
+  "capped_calls": null,
+  "capped_ctx": null,
+  "empty_reply_nudges": 0,
+  "peak_context": 19948,
+  "compacted": false,
+  "compaction_points": []
+}

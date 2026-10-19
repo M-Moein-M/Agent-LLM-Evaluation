@@ -1,0 +1,20 @@
+{
+  "model": "RedHatAI/gemma-4-31B-it-FP8-block",
+  "agent": "claude",
+  "round": 1,
+  "date": "20260701-125713",
+  "size": 256,
+  "variant": "LolaBunnyGPU",
+  "source": "solution.json",
+  "failure_reason": "No solution.json produced",
+  "build": {
+    "status": 1,
+    "start": 0,
+    "end": 0
+  },
+  "run": {
+    "status": 1,
+    "start": 0,
+    "end": 0
+  }
+}

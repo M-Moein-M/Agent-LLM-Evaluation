@@ -1,0 +1,5 @@
+Generating SQLite file /problem/.eval/prof_cublas.sqlite from /problem/.eval/prof_cublas.nsys-rep
+Processing [/problem/.eval/prof_cublas.sqlite] with [/opt/nvidia/nsight-systems-cli/2026.3.1/target-linux-x64/reports/cuda_gpu_kern_sum.py]... 
+Time (%),Total Time (ns),Instances,Avg (ns),Med (ns),Min (ns),Max (ns),StdDev (ns),Name
+100.0,300726177,50,6014523.5,6076163.0,5620190,6141699,163990.9,void cutlass::Kernel2<cutlass_80_simt_sgemm_256x128_8x4_nn_align1>(T1::Params)
+

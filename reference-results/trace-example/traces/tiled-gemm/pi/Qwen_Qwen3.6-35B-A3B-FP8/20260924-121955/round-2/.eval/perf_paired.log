@@ -1,0 +1,8 @@
+== perf grading: build gemm_bench from harness bench + agent kernel ==
+agent kernel sources: src/gemm.cu 
++ nvcc -O3 -std=c++14 -arch=sm_86 /grade/bench.cu src/gemm.cu -I src -o gemm_bench -lcublas
++ set +x
+BENCH mse=0.000000e+00
+BENCH paired rep=0 cublas_pre=304.208 agent=553.943 cublas_post=307.135
+BENCH paired rep=1 cublas_pre=305.180 agent=558.118 cublas_post=306.588
+BENCH paired rep=2 cublas_pre=305.288 agent=559.654 cublas_post=305.911

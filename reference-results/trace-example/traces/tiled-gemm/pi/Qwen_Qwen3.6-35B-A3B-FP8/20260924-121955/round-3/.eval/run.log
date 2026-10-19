@@ -1,0 +1,9 @@
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=850  total time [s]: 3.05
+Performance: 4794.47 GFLOP/s

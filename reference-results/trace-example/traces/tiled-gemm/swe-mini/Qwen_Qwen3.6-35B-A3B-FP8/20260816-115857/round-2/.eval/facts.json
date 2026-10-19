@@ -1,0 +1,22 @@
+{
+  "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+  "agent": "swe-mini",
+  "round": 2,
+  "date": "20260816-153140",
+  "size": 256,
+  "variant": "tiled-gemm",
+  "node": "a0422",
+  "source": "solution.json",
+  "build": {
+    "cmd": "make",
+    "status": 0,
+    "start": 1786887101,
+    "end": 1786887101
+  },
+  "run": {
+    "cmd": "./gemm -c",
+    "status": 0,
+    "start": 1786887101,
+    "end": 1786887104
+  }
+}

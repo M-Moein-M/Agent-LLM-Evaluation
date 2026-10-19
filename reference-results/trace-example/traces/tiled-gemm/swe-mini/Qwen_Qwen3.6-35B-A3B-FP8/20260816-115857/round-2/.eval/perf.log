@@ -1,0 +1,21 @@
+== perf grading: build gemm_bench from harness bench + agent kernel ==
+agent kernel sources: src/gemm.cu 
++ nvcc -O3 -std=c++14 -arch=sm_86 /grade/bench.cu src/gemm.cu -I src -o gemm_bench -lcublas
++ set +x
+Capture range started in the application.
+Capture range ended in the application.
+Generating '/tmp/nsys-${USER}/nsys-report-99d3.qdstrm'
+[1/1] [0%                          ] prof_agent.nsys-repProcessing events...
+[1/1] [0%                          ] prof_agent.nsys-rep[1/1] [5%                          ] prof_agent.nsys-rep[1/1] [13%                         ] prof_agent.nsys-rep[1/1] [==19%                       ] prof_agent.nsys-rep[1/1] [==20%                       ] prof_agent.nsys-rep[1/1] [======34%                   ] prof_agent.nsys-rep[1/1] [=======37%                  ] prof_agent.nsys-rep[1/1] [=================74%        ] prof_agent.nsys-rep[1/1] [=======================96%  ] prof_agent.nsys-rep[1/1] [========================98% ] prof_agent.nsys-rep[1/1] [========================100%] prof_agent.nsys-rep[1/1] [========================100%] prof_agent.nsys-rep[1/1] [========================100%] prof_agent.nsys-rep
+BENCH mse=0.000000e+00
+BENCH agent N=4096 iters=50 ms_total=2424.037 ms_per=48.4807
+Generated:
+	/problem/.eval/prof_agent.nsys-rep
+Capture range started in the application.
+Capture range ended in the application.
+Generating '/tmp/nsys-${USER}/nsys-report-9b71.qdstrm'
+[1/1] [0%                          ] prof_cublas.nsys-repProcessing events...
+[1/1] [0%                          ] prof_cublas.nsys-rep[1/1] [5%                          ] prof_cublas.nsys-rep[1/1] [=17%                        ] prof_cublas.nsys-rep[1/1] [==19%                       ] prof_cublas.nsys-rep[1/1] [==20%                       ] prof_cublas.nsys-rep[1/1] [==========47%               ] prof_cublas.nsys-rep[1/1] [============56%             ] prof_cublas.nsys-rep[1/1] [=============59%            ] prof_cublas.nsys-rep[1/1] [=======================96%  ] prof_cublas.nsys-rep[1/1] [========================98% ] prof_cublas.nsys-rep[1/1] [========================100%] prof_cublas.nsys-rep[1/1] [========================100%] prof_cublas.nsys-rep[1/1] [========================100%] prof_cublas.nsys-rep
+BENCH cublas N=4096 iters=50 ms_total=300.820 ms_per=6.0164
+Generated:
+	/problem/.eval/prof_cublas.nsys-rep

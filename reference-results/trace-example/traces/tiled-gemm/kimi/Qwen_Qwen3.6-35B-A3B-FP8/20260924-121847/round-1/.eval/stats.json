@@ -1,0 +1,21 @@
+{
+  "agent": "kimi",
+  "source": "agent.stream.jsonl",
+  "end_reason": "completed",
+  "end_severity": "ok",
+  "end_stop_reason": null,
+  "end_detail": null,
+  "end_tokens_used": null,
+  "end_tokens_limit": null,
+  "total_input": 8134024,
+  "total_output": 461848,
+  "total_tokens": 8595872,
+  "turns": 73,
+  "steps": 75,
+  "capped_calls": 0,
+  "capped_ctx": [],
+  "empty_reply_nudges": null,
+  "peak_context": 208267,
+  "compacted": false,
+  "compaction_points": []
+}

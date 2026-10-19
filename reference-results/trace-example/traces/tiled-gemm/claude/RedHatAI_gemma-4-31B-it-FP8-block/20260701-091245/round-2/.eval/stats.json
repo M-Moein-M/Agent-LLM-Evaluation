@@ -1,0 +1,21 @@
+{
+  "agent": "claude",
+  "source": "agent.stream.jsonl",
+  "end_reason": "timeout",
+  "end_severity": "error",
+  "end_stop_reason": "completed",
+  "end_detail": "Request timed out",
+  "end_tokens_used": null,
+  "end_tokens_limit": null,
+  "total_input": 50225,
+  "total_output": 64062,
+  "total_tokens": 114287,
+  "turns": 8,
+  "steps": 6,
+  "capped_calls": null,
+  "capped_ctx": null,
+  "empty_reply_nudges": 0,
+  "peak_context": 16740,
+  "compacted": false,
+  "compaction_points": []
+}

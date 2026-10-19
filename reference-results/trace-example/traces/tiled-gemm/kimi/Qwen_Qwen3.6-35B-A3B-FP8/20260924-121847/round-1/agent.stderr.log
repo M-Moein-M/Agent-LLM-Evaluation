@@ -1,0 +1,849 @@
+nvcc: NVIDIA (R) Cuda compiler driver
+Copyright (c) 2005-2024 NVIDIA Corporation
+Built on Thu_Mar_28_02:18:24_PDT_2024
+Cuda compilation tools, release 12.4, V12.4.131
+Build cuda_12.4.r12.4/compiler.34097967_0
+Thu Sep 24 12:35:37 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 610.57.04              KMD Version: 610.57.04     CUDA UMD Version: 13.3     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA A40                     On  |   00000000:81:00.0 Off |                  Off |
+|  0%   35C    P8             32W /  300W |       0MiB /  49140MiB |      0%      Default |
+rm -f gemm
+nvcc -O3 -std=c++14 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.780392e+00  MISMATCH
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=1.970968e-01  MISMATCH
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 1.780392e+00
+Perf: N=2048 iters=550  total time [s]: 3.27
+Performance: 2890.75 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=2.264136e+01  MISMATCH
+  N=200   MSE=3.741325e+01  MISMATCH
+  N=256   MSE=4.877019e+01  MISMATCH
+  N=257   MSE=5.032293e+01  MISMATCH
+  N=384   MSE=7.606929e+01  MISMATCH
+Mean Squared Error: 7.606929e+01
+Perf: N=2048 iters=1850  total time [s]: 3.01
+Performance: 10555.12 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=2.264136e+01  MISMATCH
+  N=200   MSE=3.741325e+01  MISMATCH
+  N=256   MSE=4.877019e+01  MISMATCH
+  N=257   MSE=5.032293e+01  MISMATCH
+  N=384   MSE=7.606929e+01  MISMATCH
+Mean Squared Error: 7.606929e+01
+Perf: N=2048 iters=1900  total time [s]: 3.02
+Performance: 10808.62 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=550  total time [s]: 3.28
+Performance: 2883.46 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=2.436705e+01  MISMATCH
+  N=200   MSE=3.980137e+01  MISMATCH
+  N=256   MSE=5.084003e+01  MISMATCH
+  N=257   MSE=5.190733e+01  MISMATCH
+  N=384   MSE=7.769218e+01  MISMATCH
+Mean Squared Error: 7.769218e+01
+Perf: N=2048 iters=1150  total time [s]: 3.10
+Performance: 6370.95 GFLOP/s
+rm -f gemm
+ptxas info    : 0 bytes gmem
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_Z10gemmKernelPKfS0_Pfi' for 'sm_86'
+ptxas info    : Function properties for _Z10gemmKernelPKfS0_Pfi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 40 registers, 8192 bytes smem, 380 bytes cmem[0]
+rm -f gemm
+nvcc -O3 -std=c++14 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=2050  total time [s]: 3.03
+Performance: 11622.82 GFLOP/s
+rm -f gemm
+ptxas info    : 0 bytes gmem
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_Z10gemmKernelPKfS0_Pfi' for 'sm_86'
+ptxas info    : Function properties for _Z10gemmKernelPKfS0_Pfi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 56 registers, 32768 bytes smem, 380 bytes cmem[0]
+rm -f gemm
+nvcc -O3 -std=c++14 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+src/gemm.cu(122): error: identifier "cudaSharedMemCarveoutMaxShared" is undefined
+          cudaSharedMemCarveoutMaxShared);
+          ^
+
+1 error detected in the compilation of "src/gemm.cu".
+make: *** [Makefile:7: gemm] Error 2
+/usr/local/cuda/include/cuda_occupancy.h:typedef enum cudaOccCarveoutConfig_enum {
+/usr/local/cuda/include/cuda_occupancy.h:} cudaOccCarveoutConfig;
+/usr/local/cuda/include/cuda_runtime.h: * - ::cudaFuncAttributePreferredSharedMemoryCarveout - On devices where the L1 cache and shared memory use the same hardware resources, 
+/usr/local/cuda/include/cuda_runtime_api.h: * - ::cudaFuncAttributePreferredSharedMemoryCarveout - On devices where the L1 cache and shared memory use the same hardware resources, 
+/usr/local/cuda/include/cupti_activity.h:   * in case field isSharedMemoryCarveoutRequested is set
+/usr/local/cuda/include/cupti_activity.h:  uint8_t isSharedMemoryCarveoutRequested;
+/usr/local/cuda/include/cupti_activity.h:   * isSharedMemoryCarveoutRequested is set.
+/usr/local/cuda/include/cupti_activity.h:  uint8_t sharedMemoryCarveoutRequested;
+/usr/local/cuda/include/cupti_activity_deprecated.h:   * in case field isSharedMemoryCarveoutRequested is set
+/usr/local/cuda/include/cupti_activity_deprecated.h:  uint8_t isSharedMemoryCarveoutRequested;
+/usr/local/cuda/include/cupti_activity_deprecated.h:   * isSharedMemoryCarveoutRequested is set.
+/usr/local/cuda/include/cupti_activity_deprecated.h:  uint8_t sharedMemoryCarveoutRequested;
+/usr/local/cuda/include/cupti_activity_deprecated.h:   * in case field isSharedMemoryCarveoutRequested is set
+/usr/local/cuda/include/cupti_activity_deprecated.h:  uint8_t isSharedMemoryCarveoutRequested;
+/usr/local/cuda/include/cupti_activity_deprecated.h:   * isSharedMemoryCarveoutRequested is set.
+/usr/local/cuda/include/cupti_activity_deprecated.h:  uint8_t sharedMemoryCarveoutRequested;
+/usr/local/cuda/include/cupti_activity_deprecated.h:   * in case field isSharedMemoryCarveoutRequested is set
+/usr/local/cuda/include/cupti_activity_deprecated.h:  uint8_t isSharedMemoryCarveoutRequested;
+/usr/local/cuda/include/cupti_activity_deprecated.h:   * isSharedMemoryCarveoutRequested is set.
+/usr/local/cuda/include/cupti_activity_deprecated.h:  uint8_t sharedMemoryCarveoutRequested;
+typedef enum cudaOccCarveoutConfig_enum {
+    SHAREDMEM_CARVEOUT_DEFAULT       = -1,  // no preference for shared memory or L1 (default)
+    SHAREDMEM_CARVEOUT_MAX_SHARED    = 100, // prefer maximum available shared memory, minimum L1 cache
+    SHAREDMEM_CARVEOUT_MAX_L1        = 0,    // prefer maximum available L1 cache, minimum shared memory
+    SHAREDMEM_CARVEOUT_HALF          = 50   // prefer half of maximum available shared memory, with the rest as L1 cache
+} cudaOccCarveoutConfig;
+
+/**
+ * Device state descriptor
+ *
+ * This structure describes device settings that affect occupancy calculation.
+ */
+struct cudaOccDeviceState
+{
+    // Cache / shared memory split preference. Deprecated on Volta 
+ * - ::cudaFuncAttributeMaxDynamicSharedMemorySize - The requested maximum size in bytes of dynamically-allocated shared memory. The sum of this value and the function attribute ::sharedSizeBytes
+ *   cannot exceed the device attribute ::cudaDevAttrMaxSharedMemoryPerBlockOptin. The maximal size of requestable dynamic shared memory may differ by GPU architecture.
+ * - ::cudaFuncAttributePreferredSharedMemoryCarveout - On devices where the L1 cache and shared memory use the same hardware resources, 
+ *   this sets the shared memory carveout preference, in percent of the total shared memory. See ::cudaDevAttrMaxSharedMemoryPerMultiprocessor.
+ *   This is only a hint, and the driver can choose a different ratio if required to execute the function.
+rm -f gemm
+nvcc -O3 -std=c++14 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=1850  total time [s]: 3.01
+Performance: 10553.71 GFLOP/s
+rm -f gemm
+ptxas info    : 0 bytes gmem
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_Z10gemmKernelPKfS0_Pfi' for 'sm_86'
+ptxas info    : Function properties for _Z10gemmKernelPKfS0_Pfi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 56 registers, 18432 bytes smem, 380 bytes cmem[0]
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=1400  total time [s]: 3.05
+Performance: 7886.04 GFLOP/s
+rm -f gemm
+ptxas info    : 0 bytes gmem
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_Z10gemmKernelPKfS0_Pfi' for 'sm_86'
+ptxas info    : Function properties for _Z10gemmKernelPKfS0_Pfi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 40 registers, 32768 bytes smem, 380 bytes cmem[0]
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=1500  total time [s]: 3.05
+Performance: 8462.40 GFLOP/s
+TILE=32 FRAG=2 THREADS=256 REGS= PERF=7360.66 GFLOP MSE=5.249459e-12
+TILE=48 FRAG=2 THREADS=576 REGS= PERF=6589.74 GFLOP MSE=5.249459e-12
+TILE=64 FRAG=2 THREADS=1024 REGS= PERF=8394.95 GFLOP MSE=5.249459e-12
+ptxas info    : 0 bytes gmem
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_Z10gemmKernelPKfS0_Pfi' for 'sm_86'
+ptxas info    : Function properties for _Z10gemmKernelPKfS0_Pfi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 56 registers, 8192 bytes smem, 380 bytes cmem[0]
+  N=128   MSE=2.484682e+01  MISMATCH
+  N=200   MSE=3.871973e+01  MISMATCH
+  N=256   MSE=4.910516e+01  MISMATCH
+  N=257   MSE=4.942094e+01  MISMATCH
+  N=384   MSE=7.423012e+01  MISMATCH
+Mean Squared Error: 7.423012e+01
+Perf: N=2048 iters=1600  total time [s]: 3.09
+Performance: 8881.52 GFLOP/s
+ptxas info    : 0 bytes gmem
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_Z10gemmKernelPKfS0_Pfi' for 'sm_86'
+ptxas info    : Function properties for _Z10gemmKernelPKfS0_Pfi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 56 registers, 8192 bytes smem, 380 bytes cmem[0]
+=== TILE=32 FRAG=4 ===
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=1450  total time [s]: 3.06
+Performance: 8135.72 GFLOP/s
+ptxas info    : 0 bytes gmem
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_Z10gemmKernelPKfS0_Pfi' for 'sm_86'
+ptxas info    : Function properties for _Z10gemmKernelPKfS0_Pfi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 40 registers, 32768 bytes smem, 380 bytes cmem[0]
+=== TILE=64 FRAG=2 ===
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=1500  total time [s]: 3.04
+Performance: 8485.24 GFLOP/s
+ptxas info    : 0 bytes gmem
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_Z10gemmKernelPKfS0_Pfi' for 'sm_86'
+ptxas info    : Function properties for _Z10gemmKernelPKfS0_Pfi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 72 registers, 65536 bytes smem, 380 bytes cmem[0]
+  N=128   MSE=1.413738e+01  MISMATCH
+  N=200   MSE=8.044426e+00  MISMATCH
+  N=256   MSE=1.443258e+01  MISMATCH
+  N=257   MSE=7.262092e+00  MISMATCH
+  N=384   MSE=1.422926e+01  MISMATCH
+Mean Squared Error: 1.443258e+01
+Perf: N=2048 iters=1900  total time [s]: 3.05
+Performance: 10708.13 GFLOP/s
+ptxas info    : 0 bytes gmem
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_Z10gemmKernelPKfS0_Pfi' for 'sm_86'
+ptxas info    : Function properties for _Z10gemmKernelPKfS0_Pfi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 56 registers, 8192 bytes smem, 380 bytes cmem[0]
+=== TILE=32 FRAG=4 ===
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=1450  total time [s]: 3.07
+Performance: 8126.89 GFLOP/s
+ptxas info    : 0 bytes gmem
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_Z10gemmKernelPKfS0_Pfi' for 'sm_86'
+ptxas info    : Function properties for _Z10gemmKernelPKfS0_Pfi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 56 registers, 32768 bytes smem, 380 bytes cmem[0]
+=== BASELINE ===
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=2100  total time [s]: 3.07
+Performance: 11740.35 GFLOP/s
+SKIP TILE=64 FRAG=4 (THREADS=256 REGS_EST=144)
+TILE=48 FRAG=3 THREADS=256 PERF=8082.80 GFLOP MSE=5.249459e-12
+TILE=32 FRAG=2 THREADS=256 PERF=7325.69 GFLOP MSE=5.249459e-12
+SKIP TILE=128 FRAG=4 (THREADS=1024 REGS_EST=144)
+SKIP TILE=96 FRAG=6 (THREADS=256 REGS_EST=304)
+SKIP TILE=64 FRAG=8 (THREADS=64 REGS_EST=528)
+ptxas info    : 0 bytes gmem
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_Z10gemmKernelPKfS0_Pfi' for 'sm_86'
+ptxas info    : Function properties for _Z10gemmKernelPKfS0_Pfi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 56 registers, 51200 bytes smem, 380 bytes cmem[0]
+=== TILE=80 FRAG=4 ===
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=1650  total time [s]: 3.05
+Performance: 9279.57 GFLOP/s
+Let me write it properly
+ptxas info    : 0 bytes gmem
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_Z10gemmKernelPKfS0_Pfi' for 'sm_86'
+ptxas info    : Function properties for _Z10gemmKernelPKfS0_Pfi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 56 registers, 32768 bytes smem, 380 bytes cmem[0]
+=== FINAL BASELINE ===
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=2050  total time [s]: 3.02
+Performance: 11669.61 GFLOP/s
+ptxas info    : 0 bytes gmem
+src/gemm.cu(68): error: no instance of overloaded function "nvcuda::wmma::load_matrix_sync" matches the argument list
+            argument types are: (matA, half *, int, nvcuda::wmma::layout_t)
+              wmma::load_matrix_sync(a_frag, sA + (wgRow * 16 + w * 16) * 64 + w * 16,
+              ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(528): note #3326-D: function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::accumulator, 8, 8, 4, double, void> &, const double *, unsigned int, nvcuda::wmma::layout_t)" does not match because argument #1 does not match parameter
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<accumulator, 8, 8, 4, double>& a, const double* p, unsigned ldm, layout_t layout) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(527): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 8, 8, 4, double, nvcuda::wmma::col_major> &, const double *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 8, 8, 4, double, col_major>& a, const double* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(526): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 8, 8, 4, double, nvcuda::wmma::row_major> &, const double *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 8, 8, 4, double, row_major>& a, const double* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(525): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 8, 8, 4, double, nvcuda::wmma::col_major> &, const double *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 8, 8, 4, double, col_major>& a, const double* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(524): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 8, 8, 4, double, nvcuda::wmma::row_major> &, const double *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 8, 8, 4, double, row_major>& a, const double* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(519): note #3326-D: function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::accumulator, 16, 16, 8, float, void> &, const float *, unsigned int, nvcuda::wmma::layout_t)" does not match because argument #1 does not match parameter
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<accumulator, 16, 16, 8, float>& a, const float* p, unsigned ldm, layout_t layout) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(518): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 16, 16, 8, nvcuda::wmma::precision::tf32, nvcuda::wmma::col_major> &, const float *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 16, 16, 8, precision::tf32, col_major>& a, const float* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(517): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 16, 16, 8, nvcuda::wmma::precision::tf32, nvcuda::wmma::row_major> &, const float *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 16, 16, 8, precision::tf32, row_major>& a, const float* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(516): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 16, 16, 8, nvcuda::wmma::precision::tf32, nvcuda::wmma::col_major> &, const float *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 16, 16, 8, precision::tf32, col_major>& a, const float* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(515): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 16, 16, 8, nvcuda::wmma::precision::tf32, nvcuda::wmma::row_major> &, const float *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 16, 16, 8, precision::tf32, row_major>& a, const float* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(506): note #3326-D: function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::accumulator, 8, 8, 128, int, void> &, const int *, unsigned int, nvcuda::wmma::layout_t)" does not match because argument #1 does not match parameter
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<accumulator, 8, 8, 128, int>& a, const int* p, unsigned ldm, layout_t layout) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(505): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 8, 8, 128, nvcuda::wmma::experimental::precision::b1, nvcuda::wmma::col_major> &, const void *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 8, 8, 128, experimental::precision::b1, col_major>& a, const void* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(504): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 8, 8, 128, nvcuda::wmma::experimental::precision::b1, nvcuda::wmma::row_major> &, const void *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 8, 8, 128, experimental::precision::b1, row_major>& a, const void* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(499): note #3326-D: function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::accumulator, 8, 8, 32, int, void> &, const int *, unsigned int, nvcuda::wmma::layout_t)" does not match because argument #1 does not match parameter
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<accumulator, 8, 8, 32, int>& a, const int* p, unsigned ldm, layout_t layout) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(497): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 8, 8, 32, nvcuda::wmma::experimental::precision::u4, nvcuda::wmma::col_major> &, const void *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 8, 8, 32, experimental::precision::u4, col_major>& a, const void* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(496): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 8, 8, 32, nvcuda::wmma::experimental::precision::s4, nvcuda::wmma::col_major> &, const void *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 8, 8, 32, experimental::precision::s4, col_major>& a, const void* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(495): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 8, 8, 32, nvcuda::wmma::experimental::precision::u4, nvcuda::wmma::row_major> &, const void *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 8, 8, 32, experimental::precision::u4, row_major>& a, const void* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(494): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 8, 8, 32, nvcuda::wmma::experimental::precision::s4, nvcuda::wmma::row_major> &, const void *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 8, 8, 32, experimental::precision::s4, row_major>& a, const void* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(487): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 8, 32, 16, __nv_bfloat16, nvcuda::wmma::col_major> &, const __nv_bfloat16 *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 8, 32, 16, __nv_bfloat16, col_major>& a, const __nv_bfloat16* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(486): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 8, 32, 16, __nv_bfloat16, nvcuda::wmma::row_major> &, const __nv_bfloat16 *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 8, 32, 16, __nv_bfloat16, row_major>& a, const __nv_bfloat16* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(485): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 8, 32, 16, __nv_bfloat16, nvcuda::wmma::col_major> &, const __nv_bfloat16 *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 8, 32, 16, __nv_bfloat16, col_major>& a, const __nv_bfloat16* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(484): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 8, 32, 16, __nv_bfloat16, nvcuda::wmma::row_major> &, const __nv_bfloat16 *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 8, 32, 16, __nv_bfloat16, row_major>& a, const __nv_bfloat16* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(480): note #3326-D: function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::accumulator, 8, 32, 16, int, void> &, const int *, unsigned int, nvcuda::wmma::layout_t)" does not match because argument #1 does not match parameter
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<accumulator, 8, 32, 16, int>& a, const int* p, unsigned ldm, layout_t layout) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(479): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 8, 32, 16, unsigned char, nvcuda::wmma::col_major> &, const unsigned char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 8, 32, 16, unsigned char, col_major>& a, const unsigned char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(478): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 8, 32, 16, unsigned char, nvcuda::wmma::row_major> &, const unsigned char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 8, 32, 16, unsigned char, row_major>& a, const unsigned char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(477): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 8, 32, 16, signed char, nvcuda::wmma::col_major> &, const signed char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 8, 32, 16, signed char, col_major>& a, const signed char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(476): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 8, 32, 16, signed char, nvcuda::wmma::row_major> &, const signed char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 8, 32, 16, signed char, row_major>& a, const signed char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(475): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 8, 32, 16, unsigned char, nvcuda::wmma::col_major> &, const unsigned char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 8, 32, 16, unsigned char, col_major>& a, const unsigned char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(474): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 8, 32, 16, unsigned char, nvcuda::wmma::row_major> &, const unsigned char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 8, 32, 16, unsigned char, row_major>& a, const unsigned char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(473): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 8, 32, 16, signed char, nvcuda::wmma::col_major> &, const signed char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 8, 32, 16, signed char, col_major>& a, const signed char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(472): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 8, 32, 16, signed char, nvcuda::wmma::row_major> &, const signed char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 8, 32, 16, signed char, row_major>& a, const signed char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(469): note #3326-D: function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::accumulator, 8, 32, 16, float, void> &, const float *, unsigned int, nvcuda::wmma::layout_t)" does not match because argument #1 does not match parameter
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<accumulator, 8, 32, 16, float>& a, const float* p, unsigned ldm, layout_t layout) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(468): note #3326-D: function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::accumulator, 8, 32, 16, __half, void> &, const __half *, unsigned int, nvcuda::wmma::layout_t)" does not match because argument #1 does not match parameter
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<accumulator, 8, 32, 16, __half>& a, const __half* p, unsigned ldm, layout_t layout) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(467): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 8, 32, 16, __half, nvcuda::wmma::col_major> &, const __half *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 8, 32, 16, __half, col_major>& a, const __half* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(466): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 8, 32, 16, __half, nvcuda::wmma::row_major> &, const __half *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 8, 32, 16, __half, row_major>& a, const __half* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(465): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 8, 32, 16, __half, nvcuda::wmma::col_major> &, const __half *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 8, 32, 16, __half, col_major>& a, const __half* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(464): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 8, 32, 16, __half, nvcuda::wmma::row_major> &, const __half *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 8, 32, 16, __half, row_major>& a, const __half* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(458): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 32, 8, 16, __nv_bfloat16, nvcuda::wmma::col_major> &, const __nv_bfloat16 *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 32, 8, 16, __nv_bfloat16, col_major>& a, const __nv_bfloat16* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(457): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 32, 8, 16, __nv_bfloat16, nvcuda::wmma::row_major> &, const __nv_bfloat16 *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 32, 8, 16, __nv_bfloat16, row_major>& a, const __nv_bfloat16* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(456): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 32, 8, 16, __nv_bfloat16, nvcuda::wmma::col_major> &, const __nv_bfloat16 *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 32, 8, 16, __nv_bfloat16, col_major>& a, const __nv_bfloat16* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(455): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 32, 8, 16, __nv_bfloat16, nvcuda::wmma::row_major> &, const __nv_bfloat16 *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 32, 8, 16, __nv_bfloat16, row_major>& a, const __nv_bfloat16* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(451): note #3326-D: function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::accumulator, 32, 8, 16, int, void> &, const int *, unsigned int, nvcuda::wmma::layout_t)" does not match because argument #1 does not match parameter
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<accumulator, 32, 8, 16, int>& a, const int* p, unsigned ldm, layout_t layout) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(450): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 32, 8, 16, unsigned char, nvcuda::wmma::col_major> &, const unsigned char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 32, 8, 16, unsigned char, col_major>& a, const unsigned char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(449): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 32, 8, 16, unsigned char, nvcuda::wmma::row_major> &, const unsigned char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 32, 8, 16, unsigned char, row_major>& a, const unsigned char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(448): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 32, 8, 16, signed char, nvcuda::wmma::col_major> &, const signed char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 32, 8, 16, signed char, col_major>& a, const signed char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(447): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 32, 8, 16, signed char, nvcuda::wmma::row_major> &, const signed char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 32, 8, 16, signed char, row_major>& a, const signed char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(446): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 32, 8, 16, unsigned char, nvcuda::wmma::col_major> &, const unsigned char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 32, 8, 16, unsigned char, col_major>& a, const unsigned char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(445): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 32, 8, 16, unsigned char, nvcuda::wmma::row_major> &, const unsigned char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 32, 8, 16, unsigned char, row_major>& a, const unsigned char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(444): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 32, 8, 16, signed char, nvcuda::wmma::col_major> &, const signed char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 32, 8, 16, signed char, col_major>& a, const signed char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(443): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 32, 8, 16, signed char, nvcuda::wmma::row_major> &, const signed char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 32, 8, 16, signed char, row_major>& a, const signed char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(440): note #3326-D: function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::accumulator, 32, 8, 16, float, void> &, const float *, unsigned int, nvcuda::wmma::layout_t)" does not match because argument #1 does not match parameter
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<accumulator, 32, 8, 16, float>& a, const float* p, unsigned ldm, layout_t layout) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(439): note #3326-D: function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::accumulator, 32, 8, 16, __half, void> &, const __half *, unsigned int, nvcuda::wmma::layout_t)" does not match because argument #1 does not match parameter
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<accumulator, 32, 8, 16, __half>& a, const __half* p, unsigned ldm, layout_t layout) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(438): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 32, 8, 16, __half, nvcuda::wmma::col_major> &, const __half *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 32, 8, 16, __half, col_major>& a, const __half* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(437): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 32, 8, 16, __half, nvcuda::wmma::row_major> &, const __half *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 32, 8, 16, __half, row_major>& a, const __half* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(436): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 32, 8, 16, __half, nvcuda::wmma::col_major> &, const __half *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 32, 8, 16, __half, col_major>& a, const __half* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(435): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 32, 8, 16, __half, nvcuda::wmma::row_major> &, const __half *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 32, 8, 16, __half, row_major>& a, const __half* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(429): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 16, 16, 16, __nv_bfloat16, nvcuda::wmma::col_major> &, const __nv_bfloat16 *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 16, 16, 16, __nv_bfloat16, col_major>& a, const __nv_bfloat16* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(428): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 16, 16, 16, __nv_bfloat16, nvcuda::wmma::row_major> &, const __nv_bfloat16 *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 16, 16, 16, __nv_bfloat16, row_major>& a, const __nv_bfloat16* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(427): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 16, 16, 16, __nv_bfloat16, nvcuda::wmma::col_major> &, const __nv_bfloat16 *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 16, 16, 16, __nv_bfloat16, col_major>& a, const __nv_bfloat16* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(426): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 16, 16, 16, __nv_bfloat16, nvcuda::wmma::row_major> &, const __nv_bfloat16 *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 16, 16, 16, __nv_bfloat16, row_major>& a, const __nv_bfloat16* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(422): note #3326-D: function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::accumulator, 16, 16, 16, int, void> &, const int *, unsigned int, nvcuda::wmma::layout_t)" does not match because argument #1 does not match parameter
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<accumulator, 16, 16, 16, int>& a, const int* p, unsigned ldm, layout_t layout) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(421): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 16, 16, 16, unsigned char, nvcuda::wmma::col_major> &, const unsigned char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 16, 16, 16, unsigned char, col_major>& a, const unsigned char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(420): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 16, 16, 16, unsigned char, nvcuda::wmma::row_major> &, const unsigned char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 16, 16, 16, unsigned char, row_major>& a, const unsigned char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(419): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 16, 16, 16, signed char, nvcuda::wmma::col_major> &, const signed char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 16, 16, 16, signed char, col_major>& a, const signed char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(418): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 16, 16, 16, signed char, nvcuda::wmma::row_major> &, const signed char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 16, 16, 16, signed char, row_major>& a, const signed char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(417): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 16, 16, 16, unsigned char, nvcuda::wmma::col_major> &, const unsigned char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 16, 16, 16, unsigned char, col_major>& a, const unsigned char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(416): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 16, 16, 16, unsigned char, nvcuda::wmma::row_major> &, const unsigned char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 16, 16, 16, unsigned char, row_major>& a, const unsigned char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(415): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 16, 16, 16, signed char, nvcuda::wmma::col_major> &, const signed char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 16, 16, 16, signed char, col_major>& a, const signed char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(414): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 16, 16, 16, signed char, nvcuda::wmma::row_major> &, const signed char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 16, 16, 16, signed char, row_major>& a, const signed char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(411): note #3326-D: function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::accumulator, 16, 16, 16, float, void> &, const float *, unsigned int, nvcuda::wmma::layout_t)" does not match because argument #1 does not match parameter
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<accumulator, 16, 16, 16, float>& a, const float* p, unsigned ldm, layout_t layout) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(410): note #3326-D: function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::accumulator, 16, 16, 16, __half, void> &, const __half *, unsigned int, nvcuda::wmma::layout_t)" does not match because argument #1 does not match parameter
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<accumulator, 16, 16, 16, __half>& a, const __half* p, unsigned ldm, layout_t layout) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(409): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 16, 16, 16, __half, nvcuda::wmma::col_major> &, const __half *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 16, 16, 16, __half, col_major>& a, const __half* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(408): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 16, 16, 16, __half, nvcuda::wmma::row_major> &, const __half *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 16, 16, 16, __half, row_major>& a, const __half* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(407): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 16, 16, 16, __half, nvcuda::wmma::col_major> &, const __half *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 16, 16, 16, __half, col_major>& a, const __half* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(406): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 16, 16, 16, __half, nvcuda::wmma::row_major> &, const __half *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 16, 16, 16, __half, row_major>& a, const __half* p, unsigned ldm) { }
+                                                   ^
+
+src/gemm.cu(72): error: no instance of overloaded function "nvcuda::wmma::load_matrix_sync" matches the argument list
+            argument types are: (matB, half *, int, nvcuda::wmma::layout_t)
+              wmma::load_matrix_sync(b_frag, sB + (w * 16) * 64 + wgCol * 16,
+              ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(528): note #3326-D: function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::accumulator, 8, 8, 4, double, void> &, const double *, unsigned int, nvcuda::wmma::layout_t)" does not match because argument #1 does not match parameter
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<accumulator, 8, 8, 4, double>& a, const double* p, unsigned ldm, layout_t layout) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(527): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 8, 8, 4, double, nvcuda::wmma::col_major> &, const double *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 8, 8, 4, double, col_major>& a, const double* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(526): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 8, 8, 4, double, nvcuda::wmma::row_major> &, const double *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 8, 8, 4, double, row_major>& a, const double* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(525): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 8, 8, 4, double, nvcuda::wmma::col_major> &, const double *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 8, 8, 4, double, col_major>& a, const double* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(524): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 8, 8, 4, double, nvcuda::wmma::row_major> &, const double *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 8, 8, 4, double, row_major>& a, const double* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(519): note #3326-D: function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::accumulator, 16, 16, 8, float, void> &, const float *, unsigned int, nvcuda::wmma::layout_t)" does not match because argument #1 does not match parameter
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<accumulator, 16, 16, 8, float>& a, const float* p, unsigned ldm, layout_t layout) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(518): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 16, 16, 8, nvcuda::wmma::precision::tf32, nvcuda::wmma::col_major> &, const float *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 16, 16, 8, precision::tf32, col_major>& a, const float* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(517): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 16, 16, 8, nvcuda::wmma::precision::tf32, nvcuda::wmma::row_major> &, const float *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 16, 16, 8, precision::tf32, row_major>& a, const float* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(516): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 16, 16, 8, nvcuda::wmma::precision::tf32, nvcuda::wmma::col_major> &, const float *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 16, 16, 8, precision::tf32, col_major>& a, const float* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(515): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 16, 16, 8, nvcuda::wmma::precision::tf32, nvcuda::wmma::row_major> &, const float *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 16, 16, 8, precision::tf32, row_major>& a, const float* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(506): note #3326-D: function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::accumulator, 8, 8, 128, int, void> &, const int *, unsigned int, nvcuda::wmma::layout_t)" does not match because argument #1 does not match parameter
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<accumulator, 8, 8, 128, int>& a, const int* p, unsigned ldm, layout_t layout) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(505): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 8, 8, 128, nvcuda::wmma::experimental::precision::b1, nvcuda::wmma::col_major> &, const void *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 8, 8, 128, experimental::precision::b1, col_major>& a, const void* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(504): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 8, 8, 128, nvcuda::wmma::experimental::precision::b1, nvcuda::wmma::row_major> &, const void *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 8, 8, 128, experimental::precision::b1, row_major>& a, const void* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(499): note #3326-D: function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::accumulator, 8, 8, 32, int, void> &, const int *, unsigned int, nvcuda::wmma::layout_t)" does not match because argument #1 does not match parameter
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<accumulator, 8, 8, 32, int>& a, const int* p, unsigned ldm, layout_t layout) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(497): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 8, 8, 32, nvcuda::wmma::experimental::precision::u4, nvcuda::wmma::col_major> &, const void *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 8, 8, 32, experimental::precision::u4, col_major>& a, const void* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(496): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 8, 8, 32, nvcuda::wmma::experimental::precision::s4, nvcuda::wmma::col_major> &, const void *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 8, 8, 32, experimental::precision::s4, col_major>& a, const void* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(495): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 8, 8, 32, nvcuda::wmma::experimental::precision::u4, nvcuda::wmma::row_major> &, const void *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 8, 8, 32, experimental::precision::u4, row_major>& a, const void* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(494): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 8, 8, 32, nvcuda::wmma::experimental::precision::s4, nvcuda::wmma::row_major> &, const void *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 8, 8, 32, experimental::precision::s4, row_major>& a, const void* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(487): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 8, 32, 16, __nv_bfloat16, nvcuda::wmma::col_major> &, const __nv_bfloat16 *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 8, 32, 16, __nv_bfloat16, col_major>& a, const __nv_bfloat16* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(486): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 8, 32, 16, __nv_bfloat16, nvcuda::wmma::row_major> &, const __nv_bfloat16 *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 8, 32, 16, __nv_bfloat16, row_major>& a, const __nv_bfloat16* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(485): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 8, 32, 16, __nv_bfloat16, nvcuda::wmma::col_major> &, const __nv_bfloat16 *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 8, 32, 16, __nv_bfloat16, col_major>& a, const __nv_bfloat16* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(484): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 8, 32, 16, __nv_bfloat16, nvcuda::wmma::row_major> &, const __nv_bfloat16 *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 8, 32, 16, __nv_bfloat16, row_major>& a, const __nv_bfloat16* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(480): note #3326-D: function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::accumulator, 8, 32, 16, int, void> &, const int *, unsigned int, nvcuda::wmma::layout_t)" does not match because argument #1 does not match parameter
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<accumulator, 8, 32, 16, int>& a, const int* p, unsigned ldm, layout_t layout) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(479): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 8, 32, 16, unsigned char, nvcuda::wmma::col_major> &, const unsigned char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 8, 32, 16, unsigned char, col_major>& a, const unsigned char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(478): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 8, 32, 16, unsigned char, nvcuda::wmma::row_major> &, const unsigned char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 8, 32, 16, unsigned char, row_major>& a, const unsigned char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(477): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 8, 32, 16, signed char, nvcuda::wmma::col_major> &, const signed char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 8, 32, 16, signed char, col_major>& a, const signed char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(476): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 8, 32, 16, signed char, nvcuda::wmma::row_major> &, const signed char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 8, 32, 16, signed char, row_major>& a, const signed char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(475): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 8, 32, 16, unsigned char, nvcuda::wmma::col_major> &, const unsigned char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 8, 32, 16, unsigned char, col_major>& a, const unsigned char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(474): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 8, 32, 16, unsigned char, nvcuda::wmma::row_major> &, const unsigned char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 8, 32, 16, unsigned char, row_major>& a, const unsigned char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(473): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 8, 32, 16, signed char, nvcuda::wmma::col_major> &, const signed char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 8, 32, 16, signed char, col_major>& a, const signed char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(472): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 8, 32, 16, signed char, nvcuda::wmma::row_major> &, const signed char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 8, 32, 16, signed char, row_major>& a, const signed char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(469): note #3326-D: function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::accumulator, 8, 32, 16, float, void> &, const float *, unsigned int, nvcuda::wmma::layout_t)" does not match because argument #1 does not match parameter
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<accumulator, 8, 32, 16, float>& a, const float* p, unsigned ldm, layout_t layout) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(468): note #3326-D: function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::accumulator, 8, 32, 16, __half, void> &, const __half *, unsigned int, nvcuda::wmma::layout_t)" does not match because argument #1 does not match parameter
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<accumulator, 8, 32, 16, __half>& a, const __half* p, unsigned ldm, layout_t layout) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(467): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 8, 32, 16, __half, nvcuda::wmma::col_major> &, const __half *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 8, 32, 16, __half, col_major>& a, const __half* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(466): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 8, 32, 16, __half, nvcuda::wmma::row_major> &, const __half *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 8, 32, 16, __half, row_major>& a, const __half* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(465): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 8, 32, 16, __half, nvcuda::wmma::col_major> &, const __half *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 8, 32, 16, __half, col_major>& a, const __half* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(464): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 8, 32, 16, __half, nvcuda::wmma::row_major> &, const __half *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 8, 32, 16, __half, row_major>& a, const __half* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(458): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 32, 8, 16, __nv_bfloat16, nvcuda::wmma::col_major> &, const __nv_bfloat16 *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 32, 8, 16, __nv_bfloat16, col_major>& a, const __nv_bfloat16* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(457): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 32, 8, 16, __nv_bfloat16, nvcuda::wmma::row_major> &, const __nv_bfloat16 *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 32, 8, 16, __nv_bfloat16, row_major>& a, const __nv_bfloat16* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(456): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 32, 8, 16, __nv_bfloat16, nvcuda::wmma::col_major> &, const __nv_bfloat16 *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 32, 8, 16, __nv_bfloat16, col_major>& a, const __nv_bfloat16* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(455): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 32, 8, 16, __nv_bfloat16, nvcuda::wmma::row_major> &, const __nv_bfloat16 *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 32, 8, 16, __nv_bfloat16, row_major>& a, const __nv_bfloat16* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(451): note #3326-D: function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::accumulator, 32, 8, 16, int, void> &, const int *, unsigned int, nvcuda::wmma::layout_t)" does not match because argument #1 does not match parameter
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<accumulator, 32, 8, 16, int>& a, const int* p, unsigned ldm, layout_t layout) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(450): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 32, 8, 16, unsigned char, nvcuda::wmma::col_major> &, const unsigned char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 32, 8, 16, unsigned char, col_major>& a, const unsigned char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(449): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 32, 8, 16, unsigned char, nvcuda::wmma::row_major> &, const unsigned char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 32, 8, 16, unsigned char, row_major>& a, const unsigned char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(448): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 32, 8, 16, signed char, nvcuda::wmma::col_major> &, const signed char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 32, 8, 16, signed char, col_major>& a, const signed char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(447): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 32, 8, 16, signed char, nvcuda::wmma::row_major> &, const signed char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 32, 8, 16, signed char, row_major>& a, const signed char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(446): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 32, 8, 16, unsigned char, nvcuda::wmma::col_major> &, const unsigned char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 32, 8, 16, unsigned char, col_major>& a, const unsigned char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(445): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 32, 8, 16, unsigned char, nvcuda::wmma::row_major> &, const unsigned char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 32, 8, 16, unsigned char, row_major>& a, const unsigned char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(444): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 32, 8, 16, signed char, nvcuda::wmma::col_major> &, const signed char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 32, 8, 16, signed char, col_major>& a, const signed char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(443): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 32, 8, 16, signed char, nvcuda::wmma::row_major> &, const signed char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 32, 8, 16, signed char, row_major>& a, const signed char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(440): note #3326-D: function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::accumulator, 32, 8, 16, float, void> &, const float *, unsigned int, nvcuda::wmma::layout_t)" does not match because argument #1 does not match parameter
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<accumulator, 32, 8, 16, float>& a, const float* p, unsigned ldm, layout_t layout) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(439): note #3326-D: function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::accumulator, 32, 8, 16, __half, void> &, const __half *, unsigned int, nvcuda::wmma::layout_t)" does not match because argument #1 does not match parameter
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<accumulator, 32, 8, 16, __half>& a, const __half* p, unsigned ldm, layout_t layout) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(438): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 32, 8, 16, __half, nvcuda::wmma::col_major> &, const __half *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 32, 8, 16, __half, col_major>& a, const __half* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(437): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 32, 8, 16, __half, nvcuda::wmma::row_major> &, const __half *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 32, 8, 16, __half, row_major>& a, const __half* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(436): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 32, 8, 16, __half, nvcuda::wmma::col_major> &, const __half *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 32, 8, 16, __half, col_major>& a, const __half* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(435): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 32, 8, 16, __half, nvcuda::wmma::row_major> &, const __half *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 32, 8, 16, __half, row_major>& a, const __half* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(429): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 16, 16, 16, __nv_bfloat16, nvcuda::wmma::col_major> &, const __nv_bfloat16 *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 16, 16, 16, __nv_bfloat16, col_major>& a, const __nv_bfloat16* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(428): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 16, 16, 16, __nv_bfloat16, nvcuda::wmma::row_major> &, const __nv_bfloat16 *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 16, 16, 16, __nv_bfloat16, row_major>& a, const __nv_bfloat16* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(427): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 16, 16, 16, __nv_bfloat16, nvcuda::wmma::col_major> &, const __nv_bfloat16 *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 16, 16, 16, __nv_bfloat16, col_major>& a, const __nv_bfloat16* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(426): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 16, 16, 16, __nv_bfloat16, nvcuda::wmma::row_major> &, const __nv_bfloat16 *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 16, 16, 16, __nv_bfloat16, row_major>& a, const __nv_bfloat16* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(422): note #3326-D: function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::accumulator, 16, 16, 16, int, void> &, const int *, unsigned int, nvcuda::wmma::layout_t)" does not match because argument #1 does not match parameter
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<accumulator, 16, 16, 16, int>& a, const int* p, unsigned ldm, layout_t layout) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(421): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 16, 16, 16, unsigned char, nvcuda::wmma::col_major> &, const unsigned char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 16, 16, 16, unsigned char, col_major>& a, const unsigned char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(420): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 16, 16, 16, unsigned char, nvcuda::wmma::row_major> &, const unsigned char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 16, 16, 16, unsigned char, row_major>& a, const unsigned char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(419): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 16, 16, 16, signed char, nvcuda::wmma::col_major> &, const signed char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 16, 16, 16, signed char, col_major>& a, const signed char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(418): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 16, 16, 16, signed char, nvcuda::wmma::row_major> &, const signed char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 16, 16, 16, signed char, row_major>& a, const signed char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(417): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 16, 16, 16, unsigned char, nvcuda::wmma::col_major> &, const unsigned char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 16, 16, 16, unsigned char, col_major>& a, const unsigned char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(416): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 16, 16, 16, unsigned char, nvcuda::wmma::row_major> &, const unsigned char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 16, 16, 16, unsigned char, row_major>& a, const unsigned char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(415): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 16, 16, 16, signed char, nvcuda::wmma::col_major> &, const signed char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 16, 16, 16, signed char, col_major>& a, const signed char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(414): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 16, 16, 16, signed char, nvcuda::wmma::row_major> &, const signed char *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 16, 16, 16, signed char, row_major>& a, const signed char* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(411): note #3326-D: function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::accumulator, 16, 16, 16, float, void> &, const float *, unsigned int, nvcuda::wmma::layout_t)" does not match because argument #1 does not match parameter
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<accumulator, 16, 16, 16, float>& a, const float* p, unsigned ldm, layout_t layout) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(410): note #3326-D: function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::accumulator, 16, 16, 16, __half, void> &, const __half *, unsigned int, nvcuda::wmma::layout_t)" does not match because argument #1 does not match parameter
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<accumulator, 16, 16, 16, __half>& a, const __half* p, unsigned ldm, layout_t layout) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(409): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 16, 16, 16, __half, nvcuda::wmma::col_major> &, const __half *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 16, 16, 16, __half, col_major>& a, const __half* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(408): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, 16, 16, 16, __half, nvcuda::wmma::row_major> &, const __half *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_b, 16, 16, 16, __half, row_major>& a, const __half* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(407): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 16, 16, 16, __half, nvcuda::wmma::col_major> &, const __half *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 16, 16, 16, __half, col_major>& a, const __half* p, unsigned ldm) { }
+                                                   ^
+/usr/local/cuda/bin/../targets/x86_64-linux/include/crt/mma.h(406): note #3322-D: number of parameters of function "nvcuda::wmma::load_matrix_sync(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, 16, 16, 16, __half, nvcuda::wmma::row_major> &, const __half *, unsigned int)" does not match the call
+    static __attribute__((device)) __inline__ void load_matrix_sync(fragment<matrix_a, 16, 16, 16, __half, row_major>& a, const __half* p, unsigned ldm) { }
+                                                   ^
+
+2 errors 
+detected in the compilation of "src/gemm.cu".
+=== WMMA KERNEL ===
+ptxas info    : 0 bytes gmem
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_Z10gemmKernelPKfS0_Pfi' for 'sm_86'
+ptxas info    : Function properties for _Z10gemmKernelPKfS0_Pfi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 56 registers, 380 bytes cmem[0]
+  N=128   MSE=2.769940e+01  MISMATCH
+  N=200   MSE=6.451168e+01  MISMATCH
+  N=256   MSE=5.625249e+01  MISMATCH
+  N=257   MSE=7.781733e+01  MISMATCH
+  N=384   MSE=8.473106e+01  MISMATCH
+Mean Squared Error: 8.473106e+01
+Perf: N=2048 iters=1650  total time [s]: 3.08
+Performance: 9192.10 GFLOP/s
+ptxas info    : 0 bytes gmem
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_Z10gemmKernelPKfS0_Pfi' for 'sm_86'
+ptxas info    : Function properties for _Z10gemmKernelPKfS0_Pfi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 72 registers, 65536 bytes smem, 380 bytes cmem[0]
+  N=128   MSE=1.413738e+01  MISMATCH
+  N=200   MSE=8.044426e+00  MISMATCH
+  N=256   MSE=1.443258e+01  MISMATCH
+  N=257   MSE=7.262092e+00  MISMATCH
+  N=384   MSE=1.422926e+01  MISMATCH
+Mean Squared Error: 1.443258e+01
+Perf: N=2048 iters=1900  total time [s]: 3.05
+Performance: 10685.87 GFLOP/s
+ptxas info    : 0 bytes gmem
+ptxas error   : Entry function '_Z10gemmKernelPKfS0_Pfi' uses too much shared data (0x20000 bytes, 0x19000 max)
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_Z10gemmKernelPKfS0_Pfi' for 'sm_86'
+ptxas info    : Function properties for _Z10gemmKernelPKfS0_Pfi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 56 registers, 131072 bytes smem, 380 bytes cmem[0]
+ptxas info    : 0 bytes gmem
+ptxas info    : 0 bytes gmem
+ptxas info    : Compiling entry function '_Z10gemmKernelPKfS0_Pfi' for 'sm_86'
+ptxas info    : Function properties for _Z10gemmKernelPKfS0_Pfi
+    0 bytes stack frame, 0 bytes spill stores, 0 bytes spill loads
+ptxas info    : Used 56 registers, 73728 bytes smem, 380 bytes cmem[0]
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=2050  total time [s]: 3.04
+Performance: 11587.80 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=2100  total time [s]: 3.07
+Performance: 11751.24 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=1900  total time [s]: 3.08
+Performance: 10603.92 GFLOP/s

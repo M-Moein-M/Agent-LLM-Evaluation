@@ -1,0 +1,21 @@
+{
+  "agent": "kimi",
+  "source": "agent.stream.jsonl",
+  "end_reason": "max_steps_exceeded",
+  "end_severity": "warn",
+  "end_stop_reason": null,
+  "end_detail": "Turn exceeded maxSteps=120. If max_steps_per_turn is too small, raise it in config.toml (loop_control.max_steps_per_turn), or run \"/update-config\" to update it, then \"/reload\".",
+  "end_tokens_used": null,
+  "end_tokens_limit": null,
+  "total_input": 9941319,
+  "total_output": 330463,
+  "total_tokens": 10271782,
+  "turns": 120,
+  "steps": 124,
+  "capped_calls": 0,
+  "capped_ctx": [],
+  "empty_reply_nudges": null,
+  "peak_context": 186031,
+  "compacted": false,
+  "compaction_points": []
+}

@@ -1,0 +1,598 @@
+nvcc -O3 -std=c++14  src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.780392e+00  MISMATCH
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=1.970968e-01  MISMATCH
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 1.780392e+00
+Perf: N=2048 iters=450  total time [s]: 3.05
+Performance: 2531.15 GFLOP/s
+nvcc: NVIDIA (R) Cuda compiler driver
+Copyright (c) 2005-2024 NVIDIA Corporation
+Built on Thu_Mar_28_02:18:24_PDT_2024
+Cuda compilation tools, release 12.4, V12.4.131
+Build cuda_12.4.r12.4/compiler.34097967_0
+Thu Sep 24 13:44:20 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 610.57.04              KMD Version: 610.57.04     CUDA UMD Version: 13.3     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA A40                     On  |   00000000:81:00.0 Off |                  Off |
+|  0%   49C    P0            280W /  300W |       0MiB /  49140MiB |    100%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+ptxas warning : Value of threads per SM for entry _Z10gemmKernelPKfS0_Pfi is out of range. .minnctapersm will be ignored
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=1.416860e+01  MISMATCH
+  N=200   MSE=2.239096e+01  MISMATCH
+  N=256   MSE=2.801199e+01  MISMATCH
+  N=257   MSE=2.860696e+01  MISMATCH
+  N=384   MSE=4.252373e+01  MISMATCH
+Mean Squared Error: 4.252373e+01
+Perf: N=2048 iters=64400  total time [s]: 3.00
+Performance: 368748.76 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=1.415903e+01  MISMATCH
+  N=200   MSE=2.239180e+01  MISMATCH
+  N=256   MSE=2.801097e+01  MISMATCH
+  N=257   MSE=2.860309e+01  MISMATCH
+  N=384   MSE=4.252559e+01  MISMATCH
+Mean Squared Error: 4.252559e+01
+Perf: N=2048 iters=46100  total time [s]: 3.00
+Performance: 263692.38 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=550  total time [s]: 3.28
+Performance: 2882.53 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=550  total time [s]: 3.28
+Performance: 2877.05 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=1.375425e-04  ok
+  N=257   MSE=2.976579e-03  ok
+  N=384   MSE=2.111716e-02  MISMATCH
+Mean Squared Error: 2.111716e-02
+Perf: N=2048 iters=300  total time [s]: 3.08
+Performance: 1671.61 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=200  total time [s]: 3.55
+Performance: 967.66 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=1.417231e+01  MISMATCH
+  N=200   MSE=2.240822e+01  MISMATCH
+  N=256   MSE=2.802012e+01  MISMATCH
+  N=257   MSE=2.861095e+01  MISMATCH
+  N=384   MSE=4.254224e+01  MISMATCH
+Mean Squared Error: 4.254224e+01
+Perf: N=2048 iters=56100  total time [s]: 3.00
+Performance: 321087.68 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=550  total time [s]: 3.29
+Performance: 2869.82 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=1.416860e+01  MISMATCH
+  N=200   MSE=2.239096e+01  MISMATCH
+  N=256   MSE=2.801199e+01  MISMATCH
+  N=257   MSE=2.860696e+01  MISMATCH
+  N=384   MSE=4.252373e+01  MISMATCH
+Mean Squared Error: 4.252373e+01
+Perf: N=2048 iters=43450  total time [s]: 3.00
+Performance: 248720.07 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=5.736892e-04  ok
+  N=257   MSE=4.038324e-03  ok
+  N=384   MSE=2.954667e-02  MISMATCH
+Mean Squared Error: 2.954667e-02
+Perf: N=2048 iters=550  total time [s]: 3.24
+Performance: 2914.10 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=1.416860e+01  MISMATCH
+  N=200   MSE=2.239096e+01  MISMATCH
+  N=256   MSE=2.801199e+01  MISMATCH
+  N=257   MSE=2.860696e+01  MISMATCH
+  N=384   MSE=4.252373e+01  MISMATCH
+Mean Squared Error: 4.252373e+01
+Perf: N=2048 iters=51050  total time [s]: 3.00
+Performance: 292143.26 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=400  total time [s]: 3.62
+Performance: 1900.77 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=1.207890e-03  ok
+  N=257   MSE=3.988065e-03  ok
+  N=384   MSE=1.345271e-02  MISMATCH
+Mean Squared Error: 1.345271e-02
+Perf: N=2048 iters=400  total time [s]: 3.36
+Performance: 2048.00 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.074013e-03  ok
+  N=257   MSE=5.403210e-03  ok
+  N=384   MSE=2.264226e-02  MISMATCH
+Mean Squared Error: 2.264226e-02
+Perf: N=2048 iters=550  total time [s]: 3.27
+Performance: 2889.33 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=350  total time [s]: 3.35
+Performance: 1795.08 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+src/gemm.cu(48): warning #177-D: variable "kOff" was declared but never referenced
+          int kOff = t * 16;
+              ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=1.416860e+01  MISMATCH
+  N=200   MSE=2.239096e+01  MISMATCH
+  N=256   MSE=2.801199e+01  MISMATCH
+  N=257   MSE=2.860696e+01  MISMATCH
+  N=384   MSE=4.252373e+01  MISMATCH
+Mean Squared Error: 4.252373e+01
+Perf: N=2048 iters=67650  total time [s]: 3.00
+Performance: 387231.56 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=1.416860e+01  MISMATCH
+  N=200   MSE=2.239096e+01  MISMATCH
+  N=256   MSE=2.801199e+01  MISMATCH
+  N=257   MSE=2.860696e+01  MISMATCH
+  N=384   MSE=4.252373e+01  MISMATCH
+Mean Squared Error: 4.252373e+01
+Perf: N=2048 iters=54550  total time [s]: 3.00
+Performance: 312105.54 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=550  total time [s]: 3.27
+Performance: 2891.46 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=1300  total time [s]: 3.05
+Performance: 7330.77 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+src/gemm.cu(42): warning #177-D: variable "kOff" was declared but never referenced
+          int kOff = t * 16;
+              ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=8.466122e-04  ok
+Mean Squared Error: 8.466122e-04
+Perf: N=2048 iters=1300  total time [s]: 3.05
+Performance: 7316.79 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.294460e-03  ok
+  N=200   MSE=5.200591e-02  MISMATCH
+  N=256   MSE=5.876889e-02  MISMATCH
+  N=257   MSE=1.256600e-01  MISMATCH
+  N=384   MSE=5.829870e-02  MISMATCH
+Mean Squared Error: 1.256600e-01
+Perf: N=2048 iters=500  total time [s]: 3.09
+Performance: 2781.67 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=500  total time [s]: 3.17
+Performance: 2706.28 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+src/gemm.cu(44): warning #177-D: variable "kOff" was declared but never referenced
+          int kOff = t * 32;
+              ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=7.251797e+00  MISMATCH
+  N=200   MSE=1.062024e+01  MISMATCH
+  N=256   MSE=1.402361e+01  MISMATCH
+  N=257   MSE=1.432806e+01  MISMATCH
+  N=384   MSE=2.134756e+01  MISMATCH
+Mean Squared Error: 2.134756e+01
+Perf: N=2048 iters=1550  total time [s]: 3.01
+Performance: 8839.95 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=7.251797e+00  MISMATCH
+  N=200   MSE=1.062024e+01  MISMATCH
+  N=256   MSE=1.402361e+01  MISMATCH
+  N=257   MSE=1.432806e+01  MISMATCH
+  N=384   MSE=2.134756e+01  MISMATCH
+Mean Squared Error: 2.134756e+01
+Perf: N=2048 iters=1450  total time [s]: 3.08
+Performance: 8089.41 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=500  total time [s]: 3.17
+Performance: 2706.26 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+src/gemm.cu(44): warning #177-D: variable "kOff" was declared but never referenced
+          int kOff = t * 16;
+              ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=7.549792e-04  ok
+Mean Squared Error: 7.549792e-04
+Perf: N=2048 iters=1300  total time [s]: 3.06
+Performance: 7297.17 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=8.247421e-04  ok
+Mean Squared Error: 8.247421e-04
+Perf: N=2048 iters=1300  total time [s]: 3.07
+Performance: 7280.20 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=7.251797e+00  MISMATCH
+  N=200   MSE=1.062024e+01  MISMATCH
+  N=256   MSE=1.402361e+01  MISMATCH
+  N=257   MSE=1.432806e+01  MISMATCH
+  N=384   MSE=2.134756e+01  MISMATCH
+Mean Squared Error: 2.134756e+01
+Perf: N=2048 iters=1450  total time [s]: 3.08
+Performance: 8097.41 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+src/gemm.cu(73): warning #177-D: variable "block" was declared but never referenced
+      dim3 block(16, 16);
+           ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=1.416860e+01  MISMATCH
+  N=200   MSE=2.239096e+01  MISMATCH
+  N=256   MSE=2.801199e+01  MISMATCH
+  N=257   MSE=2.860696e+01  MISMATCH
+  N=384   MSE=4.252373e+01  MISMATCH
+Mean Squared Error: 4.252373e+01
+Perf: N=2048 iters=65400  total time [s]: 3.00
+Performance: 374328.44 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=2.913880e-04  ok
+Mean Squared Error: 2.913880e-04
+Perf: N=2048 iters=1300  total time [s]: 3.04
+Performance: 7353.33 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=1300  total time [s]: 3.05
+Performance: 7313.10 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=7.544878e+00  MISMATCH
+  N=200   MSE=1.121342e+01  MISMATCH
+  N=256   MSE=1.469729e+01  MISMATCH
+  N=257   MSE=1.505827e+01  MISMATCH
+  N=384   MSE=2.253606e+01  MISMATCH
+Mean Squared Error: 2.253606e+01
+Perf: N=2048 iters=350  total time [s]: 3.22
+Performance: 1870.08 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=1200  total time [s]: 3.04
+Performance: 6786.42 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=1300  total time [s]: 3.01
+Performance: 7412.61 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=1300  total time [s]: 3.01
+Performance: 7414.04 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=1200  total time [s]: 3.01
+Performance: 6837.95 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=7.023646e+00  MISMATCH
+  N=200   MSE=1.079594e+01  MISMATCH
+  N=256   MSE=1.417982e+01  MISMATCH
+  N=257   MSE=1.418866e+01  MISMATCH
+  N=384   MSE=2.105998e+01  MISMATCH
+Mean Squared Error: 2.105998e+01
+Perf: N=2048 iters=1500  total time [s]: 3.06
+Performance: 8435.13 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+src/gemm.cu(44): warning #177-D: variable "kOff" was declared but never referenced
+          int kOff = t * 32;
+              ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=1.196677e-03  ok
+Mean Squared Error: 1.196677e-03
+Perf: N=2048 iters=1300  total time [s]: 3.02
+Performance: 7400.20 GFLOP/s
+8.6
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=1.755997e+01  MISMATCH
+  N=200   MSE=2.803093e+01  MISMATCH
+  N=256   MSE=3.470584e+01  MISMATCH
+  N=257   MSE=3.554392e+01  MISMATCH
+  N=384   MSE=5.206498e+01  MISMATCH
+Mean Squared Error: 5.206498e+01
+Perf: N=2048 iters=450  total time [s]: 3.09
+Performance: 2500.26 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=1300  total time [s]: 3.03
+Performance: 7380.65 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=1200  total time [s]: 3.20
+Performance: 6440.52 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=1100  total time [s]: 3.09
+Performance: 6125.35 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=1250  total time [s]: 3.01
+Performance: 7145.32 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=1250  total time [s]: 3.04
+Performance: 7059.53 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+src/gemm.cu(78): warning #177-D: variable "prevKOff" was declared but never referenced
+          int prevKOff = (t - 1) * 32;
+              ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=7.036510e+00  MISMATCH
+  N=200   MSE=4.436868e+00  MISMATCH
+  N=256   MSE=7.127020e+00  MISMATCH
+  N=257   MSE=3.677232e+00  MISMATCH
+  N=384   MSE=7.063715e+00  MISMATCH
+Mean Squared Error: 7.127020e+00
+Perf: N=2048 iters=500  total time [s]: 3.10
+Performance: 2771.30 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=1300  total time [s]: 3.02
+Performance: 7398.23 GFLOP/s
+rm -f gemm
+nvcc -O3 -std=c++14 -Xptxas -O3 -arch=sm_86 src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=1300  total time [s]: 3.02
+Performance: 7384.10 GFLOP/s
+error: failed to run prompt: loop.max_steps_exceeded: Turn exceeded maxSteps=120. If max_steps_per_turn is too small, raise it in config.toml (loop_control.max_steps_per_turn), or run "/update-config" to update it, then "/reload".
+See log: /problem/.kimi-code-home/logs/kimi-code.log

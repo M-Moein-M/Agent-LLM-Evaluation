@@ -1,0 +1,22 @@
+{
+  "model": "Qwen/Qwen3.6-35B-A3B-FP8",
+  "agent": "kimi",
+  "round": 2,
+  "date": "20260924-143108",
+  "size": 256,
+  "variant": "LolaBunnyGPU",
+  "node": "a0325",
+  "source": "solution.json",
+  "failure_code": "no_solution",
+  "failure_reason": "No solution.json produced",
+  "build": {
+    "status": 1,
+    "start": 0,
+    "end": 0
+  },
+  "run": {
+    "status": 1,
+    "start": 0,
+    "end": 0
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "model": "p6selfhosted/Qwen/Qwen3.6-35B-A3B-FP8",
+  "agent": "pi",
+  "round": 2,
+  "date": "20260924-142410",
+  "size": 256,
+  "variant": "tiled-gemm",
+  "node": "a0325",
+  "source": "solution.json",
+  "build": {
+    "cmd": "make",
+    "status": 0,
+    "start": 1790252651,
+    "end": 1790252651
+  },
+  "run": {
+    "cmd": "./gemm -c",
+    "status": 0,
+    "start": 1790252651,
+    "end": 1790252655
+  }
+}
