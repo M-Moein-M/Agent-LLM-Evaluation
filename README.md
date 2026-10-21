@@ -48,10 +48,10 @@ rebuild it from your own `results/runs.jsonl`.
 
 | | |
 |---|---|
-| ![pass@1 matrix](reference-results/figures/05_pass_matrix.png) | ![failure causes](reference-results/figures/23a_failure_by_end_reason.png) |
-| pass@1 per model and agent | why failing rounds fail, and whether the agent knew |
-| ![gemm performance](reference-results/figures/12_gemm_perf.png) | ![cost](reference-results/figures/28_expected_token_cost_by_model.png) |
-| every round of one problem against a cuBLAS reference | expected token cost per solved problem |
+| ![pass@1 matrix](reference-results/figures/05_pass_matrix.png) | ![adjusted pass rate](reference-results/figures/24b_adjusted_by_model.png) |
+| pass@1 per model and agent | pass rate per model, adjusted for agent and problem, with 95% bootstrap intervals |
+| ![recovery vs pass@1](reference-results/figures/22e_recovery_vs_pass1.png) | ![cost split](reference-results/figures/16d_cost_split_by_model.png) |
+| share of first-try failures solved by attempt 5, against pass@1 | token cost per solved problem, split into input and output |
 
 More in `reference-results/figures/`. Full traces are release assets, see
 `reference-results/README.md`.
