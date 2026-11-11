@@ -1,3 +1,10 @@
+# Acknowledgment
+
+The author developed this work as one of the tasks of their position as a research assistant at NHR@FAU.
+The compute was provided by the Erlangen National High Performance Computing Center (NHR@FAU) of the
+Friedrich-Alexander-Universität Erlangen-Nürnberg (FAU). This repository is not an official
+publication or product of NHR@FAU or FAU, and the views and results are the author's own.
+
 # Coding-agent evaluation harness
 
 Runs four coding agents (Claude Code, Kimi Code, pi, mini-swe-agent) on the same programming
@@ -5,6 +12,22 @@ problems against any OpenAI-compatible endpoint, replays and grades every soluti
 reports pass@1, token use and failure causes. Problems are CUDA/CPU performance tasks with a
 verifier. The repo also contains the SGLang + LiteLLM serving stack used to host the models and the
 original author's results.
+
+## Results
+
+Pass@1 and token cost of the evaluated models and agents, from the scripts in
+`reference-results/analysis/`. The per-round data is `reference-results/summary/runs.jsonl`.
+
+| | |
+|---|---|
+| ![pass@1 matrix](reference-results/figures/05_pass_matrix.png) | ![adjusted pass rate](reference-results/figures/24b_adjusted_by_model.png) |
+| pass@1 per model and agent | pass rate per model, adjusted for agent and problem, with 95% bootstrap intervals |
+| ![recovery vs pass@1](reference-results/figures/22e_recovery_vs_pass1.png) | ![cost split](reference-results/figures/16d_cost_split_by_model.png) |
+| share of first-try failures solved by attempt 5, against pass@1 | token cost per solved problem, split into input and output |
+
+More figures are in `reference-results/figures/`. Full traces are release assets, see
+`reference-results/README.md`. Give a figure to your coding agent and ask it to rebuild it from your
+own `results/runs.jsonl`.
 
 ## Quickstart
 
@@ -40,18 +63,3 @@ python3 tools/summarize.py
 Point your agent at [AGENT.md](AGENT.md), which describes what is where, and give it the prompt in
 [docs/EXTEND_PROMPT.md](docs/EXTEND_PROMPT.md) with a description of your problem. It creates the
 problem and its grader, runs the endpoint test, and keeps AGENT.md up to date.
-
-## Example results
-
-Produced by the scripts in `reference-results/analysis/`. Give a picture to your agent and ask it to
-rebuild it from your own `results/runs.jsonl`.
-
-| | |
-|---|---|
-| ![pass@1 matrix](reference-results/figures/05_pass_matrix.png) | ![adjusted pass rate](reference-results/figures/24b_adjusted_by_model.png) |
-| pass@1 per model and agent | pass rate per model, adjusted for agent and problem, with 95% bootstrap intervals |
-| ![recovery vs pass@1](reference-results/figures/22e_recovery_vs_pass1.png) | ![cost split](reference-results/figures/16d_cost_split_by_model.png) |
-| share of first-try failures solved by attempt 5, against pass@1 | token cost per solved problem, split into input and output |
-
-More in `reference-results/figures/`. Full traces are release assets, see
-`reference-results/README.md`.
