@@ -15,6 +15,8 @@ original author's results.
 
 ## Results
 
+**[Browse the full slide deck](docs/slides/README.md)**
+
 Pass@1 and token cost of the evaluated models and agents, from the scripts in
 `reference-results/analysis/`. The per-round data is `reference-results/summary/runs.jsonl`.
 
