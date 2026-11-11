@@ -17,6 +17,17 @@ original author's results.
 
 **[Browse the full slide deck](docs/slides/README.md)**
 
+### Key takeaways
+
+* Model quality is the main driver of performance.
+* Harnesses can work for or against a model. For example, `gpt-oss-120b` gets a performance boost
+  from Claude Code.
+* The models have the knowledge to solve a task, but because of randomness and training they often
+  fail on the first try. With more attempts they can close the gap, as DeepSeek-V4-Flash and
+  Qwen3.6-27B showed.
+* Models from the same family and architecture can differ in performance. Qwen3.6-27B did better than
+  Qwen3.8-27B, even though it is the older model.
+
 Pass@1 and token cost of the evaluated models and agents, from the scripts in
 `reference-results/analysis/`. The per-round data is `reference-results/summary/runs.jsonl`.
 
