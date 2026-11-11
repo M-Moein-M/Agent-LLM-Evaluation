@@ -9,7 +9,7 @@ coding agent adapt them to yours.
 | `report_html.py` | the same as a sortable standalone HTML report, joins `summary/notes.yaml`. Default output `results/report.html`. |
 | `make_figures.py` | the main figure set from `results/runs.jsonl` (`EVAL_RUNS_JSONL` overrides the input, `EVAL_FIGURES_OUT` the output directory, default `results/figures`). |
 | `make_figures_stats.py` | statistical companions: confidence intervals, retry gain, cost per solve. Imports `make_figures`. |
-| `make_figures_2dseq.py`, `make_figures_examples.py`, `make_figures_coinflip.py` | the 2D-seq study, cross-problem examples, a coin-flip noise illustration. |
+| `make_figures_examples.py`, `make_figures_coinflip.py` | cross-problem examples, a coin-flip noise illustration. |
 | `kimi_token_estimate.py` | backfills token estimates for old kimi traces that have no wire log (see below). |
 | `_extract_kimi_prefix.py`, `_mock_openai_server.py` | captured kimi's constant injected prompt prefix from a stub server, input to the estimate. |
 

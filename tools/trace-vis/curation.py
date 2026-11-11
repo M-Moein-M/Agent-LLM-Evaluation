@@ -11,8 +11,8 @@ the two cannot drift silently.
 
 The rules, in order:
 
-1. A40 rounds only. Anything measured elsewhere (the CPU-only 2D-seq study,
-   rounds that died before sampling a GPU) is out of scope for the matrix.
+1. A40 rounds only. Anything measured elsewhere (rounds that died before
+   sampling a GPU, non-A40 hardware) is out of scope for the matrix.
 2. Campaigns in EXCLUDE_CAMPAIGNS are dropped as harness artifacts.
 3. Campaigns with fewer than 3 rounds are dropped as debug pokes. The floor is
    3, not 5, so Kimi-K3's genuine 3-round-per-problem campaigns are kept.

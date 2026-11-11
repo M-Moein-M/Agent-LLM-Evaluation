@@ -1085,7 +1085,7 @@ def test_curation():
     check(len(curation.curated_run_ids(_camp("P", "pi", "M", "20260701-000000", 3))) == 3,
           "3-round campaigns are kept (Kimi-K3's floor)")
 
-    cpu = _camp("2D-seq", "pi", "M", "20260728-000000", 5, gpu="nvidia-smi not found")
+    cpu = _camp("P", "pi", "M", "20260728-000000", 5, gpu="nvidia-smi not found")
     check(curation.curated_run_ids(cpu) == set(), "non-A40 rounds are out of scope")
 
     old = _camp("P", "pi", "M", "20260701-000000", 5)

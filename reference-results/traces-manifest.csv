@@ -1,10 +1,4 @@
 problem,agent,model,campaign,rounds,graded,passed,bytes_uncompressed,asset
-2D-seq,claude,deepseek-ai_DeepSeek-V4-Flash,20260727-200709,1,1,1,776415,traces-2D-seq.tar.zst
-2D-seq,claude,deepseek-ai_DeepSeek-V4-Flash,20260727-212325,5,5,3,4438632,traces-2D-seq.tar.zst
-2D-seq,claude-pro,claude-opus-5,20260728-093535,5,5,0,5304099,traces-2D-seq.tar.zst
-2D-seq,kimi,Qwen_Qwen3.6-35B-A3B-FP8,20260809-225419,1,1,0,85267,traces-2D-seq.tar.zst
-2D-seq,swe-mini,Qwen_Qwen3.6-35B-A3B-FP8,20260809-225419,1,1,0,517435,traces-2D-seq.tar.zst
-2D-seq,swe-mini,deepseek-ai_DeepSeek-V4-Flash,20260728-021132,5,5,4,5726845,traces-2D-seq.tar.zst
 RabbitCT-LolaBunny,claude,DeepSeek-V4-Flash,20260630-183453,10,10,6,5285653,traces-RabbitCT-LolaBunny.tar.zst
 RabbitCT-LolaBunny,claude,Qwen_Qwen3.6-27B,20260701-080943,10,10,7,141188585,traces-RabbitCT-LolaBunny.tar.zst
 RabbitCT-LolaBunny,claude,Qwen_Qwen3.6-27B,20260926-140113,17,11,9,18305956,traces-RabbitCT-LolaBunny.tar.zst

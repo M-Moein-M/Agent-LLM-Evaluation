@@ -76,8 +76,8 @@ The header switch picks the scope, and it sticks:
   problem × agent × model, campaigns under 3 rounds dropped, known
   harness/config bugs excluded. Superseded campaigns and smoke tests stay out
   of the way, and every cell of that figure reproduces from this scope.
-- **All runs** — every row in `results/runs.jsonl`, including the CPU-only
-  2D-seq study, which the pass matrix's A40 filter leaves out. Rounds outside
+- **All runs** — every row in `results/runs.jsonl`, including rounds
+  the pass matrix's A40 filter leaves out. Rounds outside
   the curated set are dimmed in the tables.
 
 The rules live in `curation.py`, ported from `reference-results/analysis/make_figures.py`

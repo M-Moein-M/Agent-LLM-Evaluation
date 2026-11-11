@@ -2,21 +2,21 @@
   "fail_classes": {
     "no_solution": 307,
     "mse": 269,
-    "context_overflow": 125,
+    "context_overflow": 119,
     "output_limit": 98,
-    "max_turns": 90,
+    "max_turns": 89,
     "run_error": 74,
     "format_error": 73,
     "cut_off": 61,
-    "max_steps_exceeded": 54,
+    "max_steps_exceeded": 53,
     "make_config_stop": 38,
     "perf": 33,
     "api_error": 31,
-    "limits_exceeded": 23,
     "gpu": 22,
+    "limits_exceeded": 22,
     "timeout": 21,
-    "compile_error": 17,
     "empty_response": 17,
+    "compile_error": 16,
     "incomplete_solution": 9,
     "link_error": 9,
     "toolchain_missing": 9,
@@ -30,24 +30,24 @@
     "ptxas_error": 1
   },
   "fail_class_labels": {
-    "context_overflow": "Context window exceeded",
-    "max_turns": "Turn limit reached \u2014 the harness cut the run off",
-    "compile_error": "Compile error",
-    "limits_exceeded": "Step or cost limit reached \u2014 the harness stopped the run",
-    "max_steps_exceeded": "Turn step cap reached",
     "run_error": "The graded run crashed",
+    "max_turns": "Turn limit reached \u2014 the harness cut the run off",
     "mse": "Wrong numbers \u2014 error above the correctness threshold",
     "gpu": "The GPU was idle \u2014 the work did not run on it",
     "no_solution": "No solution.json \u2014 the agent never wrote the artifact",
+    "context_overflow": "Context window exceeded",
     "thinking_block": "Provider rejected the assistant's thinking block",
     "toolchain_missing": "A build tool is missing from the image",
+    "compile_error": "Compile error",
     "make_config_stop": "Make stopped after writing config.mk and was never re-run",
     "empty_response": "Provider returned no text or tool call",
     "connection_error": "Lost connection to the provider",
+    "max_steps_exceeded": "Turn step cap reached",
     "api_error": "Provider error",
     "output_limit": "Output token limit reached",
     "cut_off": "Cut off \u2014 no final assistant message",
     "timeout": "Request timed out",
+    "limits_exceeded": "Step or cost limit reached \u2014 the harness stopped the run",
     "format_error": "Too many malformed tool calls in a row \u2014 the harness gave up",
     "make_no_rule": "Make has no rule for a required target",
     "link_error": "Link error",
@@ -61,39 +61,6 @@
   },
   "agents": {
     "claude-pro": {
-      "claude-opus-5": {
-        "runs": 5,
-        "passed": 0,
-        "pass@1": 0.0,
-        "fail_classes": {
-          "context_overflow": 5
-        },
-        "stage_failures": {
-          "build": 5
-        },
-        "metrics": {
-          "mse_median": null,
-          "mse_max": null,
-          "mse_n": 0,
-          "gpu_avg_mean": null,
-          "gpu_peak_mean": null,
-          "gpu_peak_min": null,
-          "perf_frac_median": null,
-          "perf_frac_mean": null,
-          "perf_frac_n": 0
-        },
-        "avg_total_tokens": 6204192.2,
-        "avg_turns": 55.0,
-        "avg_steps": 57.2,
-        "avg_peak_context": 173251.0,
-        "compacted_runs": 0,
-        "end_reasons": {
-          "context_overflow": 5
-        },
-        "capped_calls": null,
-        "over_call_limit_runs": 0,
-        "empty_reply_nudges": 0
-      },
       "claude-opus-4-8": {
         "runs": 31,
         "passed": 20,
@@ -133,20 +100,20 @@
     },
     "claude": {
       "DeepSeek-V4-Flash": {
-        "runs": 48,
-        "passed": 30,
-        "pass@1": 0.625,
+        "runs": 42,
+        "passed": 26,
+        "pass@1": 0.6190476190476191,
         "fail_classes": {
-          "max_turns": 6,
+          "max_turns": 5,
           "mse": 4,
-          "context_overflow": 3,
+          "context_overflow": 2,
           "perf": 2,
           "run_error": 2,
           "gpu": 1
         },
         "stage_failures": {
-          "build": 9,
           "run": 2,
+          "build": 7,
           "mse": 4,
           "gpu": 1,
           "perf": 2
@@ -162,15 +129,15 @@
           "perf_frac_mean": 0.6141274210407871,
           "perf_frac_n": 4
         },
-        "avg_total_tokens": 5257263.958333333,
-        "avg_turns": 79.39583333333333,
-        "avg_steps": 90.22916666666667,
+        "avg_total_tokens": 4846446.523809524,
+        "avg_turns": 76.61904761904762,
+        "avg_steps": 87.47619047619048,
         "avg_peak_context": 0.0,
         "compacted_runs": 0,
         "end_reasons": {
-          "completed": 37,
-          "max_turns": 8,
-          "context_overflow": 3
+          "completed": 33,
+          "max_turns": 7,
+          "context_overflow": 2
         },
         "capped_calls": null,
         "over_call_limit_runs": 2,
@@ -592,430 +559,7 @@
         "empty_reply_nudges": 0
       }
     },
-    "swe-mini": {
-      "DeepSeek-V4-Flash": {
-        "runs": 45,
-        "passed": 33,
-        "pass@1": 0.7333333333333333,
-        "fail_classes": {
-          "mse": 5,
-          "run_error": 4,
-          "compile_error": 1,
-          "gpu": 1,
-          "limits_exceeded": 1
-        },
-        "stage_failures": {
-          "build": 2,
-          "run": 4,
-          "mse": 5,
-          "gpu": 1
-        },
-        "metrics": {
-          "mse_median": 0.0,
-          "mse_max": 0.000623047,
-          "mse_n": 35,
-          "gpu_avg_mean": 57.323664997696966,
-          "gpu_peak_mean": 84.42857142857143,
-          "gpu_peak_min": 42.0,
-          "perf_frac_median": 0.5420079288622762,
-          "perf_frac_mean": 0.5478110434803913,
-          "perf_frac_n": 9
-        },
-        "avg_total_tokens": 3443438.4444444445,
-        "avg_turns": 69.6,
-        "avg_steps": 75.57777777777778,
-        "avg_peak_context": 76302.93333333333,
-        "compacted_runs": 0,
-        "end_reasons": {
-          "completed": 43,
-          "limits_exceeded": 2
-        },
-        "capped_calls": 0,
-        "over_call_limit_runs": 0,
-        "empty_reply_nudges": null
-      },
-      "Qwen3.6-35B-A3B-FP8": {
-        "runs": 42,
-        "passed": 20,
-        "pass@1": 0.47619047619047616,
-        "fail_classes": {
-          "limits_exceeded": 14,
-          "perf": 5,
-          "mse": 2,
-          "gpu": 1
-        },
-        "stage_failures": {
-          "build": 14,
-          "mse": 2,
-          "gpu": 1,
-          "perf": 5
-        },
-        "metrics": {
-          "mse_median": 3.1298755e-13,
-          "mse_max": 0.000851452,
-          "mse_n": 28,
-          "gpu_avg_mean": 62.889218676393874,
-          "gpu_peak_mean": 88.35714285714286,
-          "gpu_peak_min": 47.0,
-          "perf_frac_median": 0.1554575312414853,
-          "perf_frac_mean": 0.5354091619928454,
-          "perf_frac_n": 10
-        },
-        "avg_total_tokens": 5793887.761904762,
-        "avg_turns": 86.11904761904762,
-        "avg_steps": 86.21428571428571,
-        "avg_peak_context": 118768.5,
-        "compacted_runs": 0,
-        "end_reasons": {
-          "completed": 26,
-          "limits_exceeded": 16
-        },
-        "capped_calls": 0,
-        "over_call_limit_runs": 0,
-        "empty_reply_nudges": null
-      },
-      "Qwen3.6-27B": {
-        "runs": 40,
-        "passed": 29,
-        "pass@1": 0.725,
-        "fail_classes": {
-          "cut_off": 4,
-          "mse": 3,
-          "context_overflow": 2,
-          "limits_exceeded": 1,
-          "perf": 1
-        },
-        "stage_failures": {
-          "build": 7,
-          "mse": 3,
-          "perf": 1
-        },
-        "metrics": {
-          "mse_median": 0.0,
-          "mse_max": 0.000623047,
-          "mse_n": 33,
-          "gpu_avg_mean": 50.41362987467037,
-          "gpu_peak_mean": 83.93939393939394,
-          "gpu_peak_min": 69.0,
-          "perf_frac_median": 0.33070526598117667,
-          "perf_frac_mean": 0.36038221847482493,
-          "perf_frac_n": 8
-        },
-        "avg_total_tokens": 3023904.4,
-        "avg_turns": 68.95,
-        "avg_steps": 68.95,
-        "avg_peak_context": 72949.55,
-        "compacted_runs": 0,
-        "end_reasons": {
-          "completed": 33,
-          "cut_off": 4,
-          "context_overflow": 2,
-          "limits_exceeded": 1
-        },
-        "capped_calls": 2,
-        "over_call_limit_runs": 0,
-        "empty_reply_nudges": null
-      },
-      "gemma-4-31B-it-FP8-block": {
-        "runs": 41,
-        "passed": 17,
-        "pass@1": 0.4146341463414634,
-        "fail_classes": {
-          "mse": 14,
-          "run_error": 7,
-          "gpu": 1,
-          "no_solution": 1,
-          "perf": 1
-        },
-        "stage_failures": {
-          "run": 7,
-          "mse": 14,
-          "gpu": 2,
-          "build": 1,
-          "perf": 1
-        },
-        "metrics": {
-          "mse_median": 5.249459e-12,
-          "mse_max": 370164900000.0,
-          "mse_n": 33,
-          "gpu_avg_mean": 54.51059554490272,
-          "gpu_peak_mean": 79.0909090909091,
-          "gpu_peak_min": 15.0,
-          "perf_frac_median": 0.42697478590288374,
-          "perf_frac_mean": 0.41518445136265597,
-          "perf_frac_n": 10
-        },
-        "avg_total_tokens": 970099.8536585366,
-        "avg_turns": 43.1219512195122,
-        "avg_steps": 43.1219512195122,
-        "avg_peak_context": 34411.756097560974,
-        "compacted_runs": 0,
-        "end_reasons": {
-          "completed": 41
-        },
-        "capped_calls": 0,
-        "over_call_limit_runs": 0,
-        "empty_reply_nudges": null
-      },
-      "gpt-oss-120b": {
-        "runs": 81,
-        "passed": 5,
-        "pass@1": 0.06172839506172839,
-        "fail_classes": {
-          "format_error": 33,
-          "no_solution": 16,
-          "mse": 8,
-          "run_error": 6,
-          "perf": 4,
-          "link_error": 3,
-          "limits_exceeded": 2,
-          "make_no_rule": 2,
-          "compile_error": 1,
-          "gpu": 1
-        },
-        "stage_failures": {
-          "build": 57,
-          "run": 6,
-          "mse": 8,
-          "gpu": 3,
-          "perf": 8
-        },
-        "metrics": {
-          "mse_median": 5.249459e-12,
-          "mse_max": 86250.3,
-          "mse_n": 18,
-          "gpu_avg_mean": 54.40642247639797,
-          "gpu_peak_mean": 79.05555555555556,
-          "gpu_peak_min": 0.0,
-          "perf_frac_median": 0.11971460384970933,
-          "perf_frac_mean": 0.11564517694033231,
-          "perf_frac_n": 6
-        },
-        "avg_total_tokens": 225866.38271604938,
-        "avg_turns": 15.654320987654321,
-        "avg_steps": 10.592592592592593,
-        "avg_peak_context": 10132.41975308642,
-        "compacted_runs": 0,
-        "end_reasons": {
-          "completed": 45,
-          "format_error": 33,
-          "limits_exceeded": 3
-        },
-        "capped_calls": 0,
-        "over_call_limit_runs": 0,
-        "empty_reply_nudges": null
-      },
-      "Llama-3.3-70B-Instruct": {
-        "runs": 82,
-        "passed": 0,
-        "pass@1": 0.0,
-        "fail_classes": {
-          "format_error": 40,
-          "mse": 11,
-          "make_config_stop": 8,
-          "compile_error": 6,
-          "incomplete_solution": 6,
-          "run_error": 6,
-          "no_solution": 3,
-          "api_error": 1,
-          "build_error": 1
-        },
-        "stage_failures": {
-          "build": 65,
-          "run": 6,
-          "mse": 11,
-          "gpu": 5,
-          "perf": 6
-        },
-        "metrics": {
-          "mse_median": 1.780392,
-          "mse_max": 641383300000.0,
-          "mse_n": 11,
-          "gpu_avg_mean": 44.371212121212125,
-          "gpu_peak_mean": 55.63636363636363,
-          "gpu_peak_min": 0.0,
-          "perf_frac_median": 0.1257447003632863,
-          "perf_frac_mean": 0.1257868927920153,
-          "perf_frac_n": 6
-        },
-        "avg_total_tokens": 7544.865853658536,
-        "avg_turns": 3.4146341463414633,
-        "avg_steps": 3.4390243902439024,
-        "avg_peak_context": 1288.6707317073171,
-        "compacted_runs": 0,
-        "end_reasons": {
-          "completed": 41,
-          "format_error": 40,
-          "api_error": 1
-        },
-        "capped_calls": 0,
-        "over_call_limit_runs": 0,
-        "empty_reply_nudges": null
-      },
-      "Kimi-K2.7-Code": {
-        "runs": 40,
-        "passed": 39,
-        "pass@1": 0.975,
-        "fail_classes": {
-          "mse": 1
-        },
-        "stage_failures": {
-          "mse": 1
-        },
-        "metrics": {
-          "mse_median": 0.0,
-          "mse_max": 0.000623047,
-          "mse_n": 40,
-          "gpu_avg_mean": 52.32953385145411,
-          "gpu_peak_mean": 94.875,
-          "gpu_peak_min": 85.0,
-          "perf_frac_median": 0.7310390825559949,
-          "perf_frac_mean": 0.8240854168806774,
-          "perf_frac_n": 10
-        },
-        "avg_total_tokens": 2165575.3,
-        "avg_turns": 43.825,
-        "avg_steps": 44.975,
-        "avg_peak_context": 64455.55,
-        "compacted_runs": 0,
-        "end_reasons": {
-          "completed": 40
-        },
-        "capped_calls": 0,
-        "over_call_limit_runs": 0,
-        "empty_reply_nudges": null
-      },
-      "DeepSeek-V4-Flash-0731": {
-        "runs": 60,
-        "passed": 50,
-        "pass@1": 0.8333333333333334,
-        "fail_classes": {
-          "cut_off": 3,
-          "limits_exceeded": 3,
-          "gpu": 1,
-          "mse": 1,
-          "perf": 1,
-          "toolchain_missing": 1
-        },
-        "stage_failures": {
-          "build": 7,
-          "gpu": 1,
-          "mse": 1,
-          "perf": 1
-        },
-        "metrics": {
-          "mse_median": 0.0,
-          "mse_max": 0.000623047,
-          "mse_n": 53,
-          "gpu_avg_mean": 60.43823571042018,
-          "gpu_peak_mean": 91.64150943396227,
-          "gpu_peak_min": 22.0,
-          "perf_frac_median": 0.7685412819722783,
-          "perf_frac_mean": 0.7506879677853634,
-          "perf_frac_n": 9
-        },
-        "avg_total_tokens": 4165332.75,
-        "avg_turns": 72.26666666666667,
-        "avg_steps": 72.76666666666667,
-        "avg_peak_context": 82829.08333333333,
-        "compacted_runs": 0,
-        "end_reasons": {
-          "completed": 48,
-          "limits_exceeded": 7,
-          "cut_off": 4,
-          "context_overflow": 1
-        },
-        "capped_calls": 0,
-        "over_call_limit_runs": 0,
-        "empty_reply_nudges": null
-      },
-      "Qwen3.8-27B": {
-        "runs": 42,
-        "passed": 25,
-        "pass@1": 0.5952380952380952,
-        "fail_classes": {
-          "context_overflow": 13,
-          "limits_exceeded": 2,
-          "gpu": 1,
-          "mse": 1
-        },
-        "stage_failures": {
-          "gpu": 1,
-          "build": 15,
-          "mse": 1
-        },
-        "metrics": {
-          "mse_median": 0.0,
-          "mse_max": 0.000623524,
-          "mse_n": 27,
-          "gpu_avg_mean": 55.34595819703358,
-          "gpu_peak_mean": 93.81481481481481,
-          "gpu_peak_min": 30.0,
-          "perf_frac_median": null,
-          "perf_frac_mean": null,
-          "perf_frac_n": 0
-        },
-        "avg_total_tokens": 7141198.904761905,
-        "avg_turns": 63.285714285714285,
-        "avg_steps": 73.64285714285714,
-        "avg_peak_context": 162425.19047619047,
-        "compacted_runs": 0,
-        "end_reasons": {
-          "completed": 25,
-          "context_overflow": 14,
-          "limits_exceeded": 3
-        },
-        "capped_calls": 3,
-        "over_call_limit_runs": 0,
-        "empty_reply_nudges": null
-      }
-    },
     "kimi": {
-      "Qwen3.6-35B-A3B-FP8": {
-        "runs": 84,
-        "passed": 39,
-        "pass@1": 0.4642857142857143,
-        "fail_classes": {
-          "max_steps_exceeded": 27,
-          "mse": 12,
-          "gpu": 2,
-          "rate_limit": 2,
-          "empty_response": 1,
-          "run_error": 1
-        },
-        "stage_failures": {
-          "build": 30,
-          "mse": 12,
-          "gpu": 2,
-          "run": 1
-        },
-        "metrics": {
-          "mse_median": 0.0,
-          "mse_max": 0.000623047,
-          "mse_n": 53,
-          "gpu_avg_mean": 56.18022122095247,
-          "gpu_peak_mean": 88.39622641509433,
-          "gpu_peak_min": 31.0,
-          "perf_frac_median": 0.36053212149368513,
-          "perf_frac_mean": 0.3928910890557163,
-          "perf_frac_n": 7
-        },
-        "avg_total_tokens": 6958353.743589744,
-        "avg_turns": 80.58333333333333,
-        "avg_steps": 90.60714285714286,
-        "avg_peak_context": 122530.10256410256,
-        "compacted_runs": 0,
-        "end_reasons": {
-          "completed": 50,
-          "max_steps_exceeded": 29,
-          "hung_after_final": 2,
-          "rate_limit": 2,
-          "empty_response": 1
-        },
-        "capped_calls": 0,
-        "over_call_limit_runs": 2,
-        "empty_reply_nudges": null
-      },
       "DeepSeek-V4-Flash": {
         "runs": 40,
         "passed": 31,
@@ -1250,6 +794,51 @@
         },
         "capped_calls": null,
         "over_call_limit_runs": 0,
+        "empty_reply_nudges": null
+      },
+      "Qwen3.6-35B-A3B-FP8": {
+        "runs": 83,
+        "passed": 39,
+        "pass@1": 0.46987951807228917,
+        "fail_classes": {
+          "max_steps_exceeded": 26,
+          "mse": 12,
+          "gpu": 2,
+          "rate_limit": 2,
+          "empty_response": 1,
+          "run_error": 1
+        },
+        "stage_failures": {
+          "build": 29,
+          "mse": 12,
+          "gpu": 2,
+          "run": 1
+        },
+        "metrics": {
+          "mse_median": 0.0,
+          "mse_max": 0.000623047,
+          "mse_n": 53,
+          "gpu_avg_mean": 56.18022122095247,
+          "gpu_peak_mean": 88.39622641509433,
+          "gpu_peak_min": 31.0,
+          "perf_frac_median": 0.36053212149368513,
+          "perf_frac_mean": 0.3928910890557163,
+          "perf_frac_n": 7
+        },
+        "avg_total_tokens": 6958353.743589744,
+        "avg_turns": 81.19277108433735,
+        "avg_steps": 91.16867469879519,
+        "avg_peak_context": 122530.10256410256,
+        "compacted_runs": 0,
+        "end_reasons": {
+          "completed": 50,
+          "max_steps_exceeded": 28,
+          "hung_after_final": 2,
+          "rate_limit": 2,
+          "empty_response": 1
+        },
+        "capped_calls": 0,
+        "over_call_limit_runs": 2,
         "empty_reply_nudges": null
       },
       "DeepSeek-V4-Flash-0731": {
@@ -1886,121 +1475,386 @@
         "over_call_limit_runs": 0,
         "empty_reply_nudges": null
       }
+    },
+    "swe-mini": {
+      "Qwen3.6-27B": {
+        "runs": 40,
+        "passed": 29,
+        "pass@1": 0.725,
+        "fail_classes": {
+          "cut_off": 4,
+          "mse": 3,
+          "context_overflow": 2,
+          "limits_exceeded": 1,
+          "perf": 1
+        },
+        "stage_failures": {
+          "build": 7,
+          "mse": 3,
+          "perf": 1
+        },
+        "metrics": {
+          "mse_median": 0.0,
+          "mse_max": 0.000623047,
+          "mse_n": 33,
+          "gpu_avg_mean": 50.41362987467037,
+          "gpu_peak_mean": 83.93939393939394,
+          "gpu_peak_min": 69.0,
+          "perf_frac_median": 0.33070526598117667,
+          "perf_frac_mean": 0.36038221847482493,
+          "perf_frac_n": 8
+        },
+        "avg_total_tokens": 3023904.4,
+        "avg_turns": 68.95,
+        "avg_steps": 68.95,
+        "avg_peak_context": 72949.55,
+        "compacted_runs": 0,
+        "end_reasons": {
+          "completed": 33,
+          "cut_off": 4,
+          "context_overflow": 2,
+          "limits_exceeded": 1
+        },
+        "capped_calls": 2,
+        "over_call_limit_runs": 0,
+        "empty_reply_nudges": null
+      },
+      "Qwen3.6-35B-A3B-FP8": {
+        "runs": 41,
+        "passed": 20,
+        "pass@1": 0.4878048780487805,
+        "fail_classes": {
+          "limits_exceeded": 13,
+          "perf": 5,
+          "mse": 2,
+          "gpu": 1
+        },
+        "stage_failures": {
+          "build": 13,
+          "mse": 2,
+          "gpu": 1,
+          "perf": 5
+        },
+        "metrics": {
+          "mse_median": 3.1298755e-13,
+          "mse_max": 0.000851452,
+          "mse_n": 28,
+          "gpu_avg_mean": 62.889218676393874,
+          "gpu_peak_mean": 88.35714285714286,
+          "gpu_peak_min": 47.0,
+          "perf_frac_median": 0.1554575312414853,
+          "perf_frac_mean": 0.5354091619928454,
+          "perf_frac_n": 10
+        },
+        "avg_total_tokens": 5923158.390243903,
+        "avg_turns": 87.48780487804878,
+        "avg_steps": 87.58536585365853,
+        "avg_peak_context": 120492.75609756098,
+        "compacted_runs": 0,
+        "end_reasons": {
+          "completed": 26,
+          "limits_exceeded": 15
+        },
+        "capped_calls": 0,
+        "over_call_limit_runs": 0,
+        "empty_reply_nudges": null
+      },
+      "gemma-4-31B-it-FP8-block": {
+        "runs": 41,
+        "passed": 17,
+        "pass@1": 0.4146341463414634,
+        "fail_classes": {
+          "mse": 14,
+          "run_error": 7,
+          "gpu": 1,
+          "no_solution": 1,
+          "perf": 1
+        },
+        "stage_failures": {
+          "run": 7,
+          "mse": 14,
+          "gpu": 2,
+          "build": 1,
+          "perf": 1
+        },
+        "metrics": {
+          "mse_median": 5.249459e-12,
+          "mse_max": 370164900000.0,
+          "mse_n": 33,
+          "gpu_avg_mean": 54.51059554490272,
+          "gpu_peak_mean": 79.0909090909091,
+          "gpu_peak_min": 15.0,
+          "perf_frac_median": 0.42697478590288374,
+          "perf_frac_mean": 0.41518445136265597,
+          "perf_frac_n": 10
+        },
+        "avg_total_tokens": 970099.8536585366,
+        "avg_turns": 43.1219512195122,
+        "avg_steps": 43.1219512195122,
+        "avg_peak_context": 34411.756097560974,
+        "compacted_runs": 0,
+        "end_reasons": {
+          "completed": 41
+        },
+        "capped_calls": 0,
+        "over_call_limit_runs": 0,
+        "empty_reply_nudges": null
+      },
+      "DeepSeek-V4-Flash": {
+        "runs": 40,
+        "passed": 29,
+        "pass@1": 0.725,
+        "fail_classes": {
+          "mse": 5,
+          "run_error": 4,
+          "gpu": 1,
+          "limits_exceeded": 1
+        },
+        "stage_failures": {
+          "run": 4,
+          "mse": 5,
+          "gpu": 1,
+          "build": 1
+        },
+        "metrics": {
+          "mse_median": 0.0,
+          "mse_max": 0.000623047,
+          "mse_n": 35,
+          "gpu_avg_mean": 57.323664997696966,
+          "gpu_peak_mean": 84.42857142857143,
+          "gpu_peak_min": 42.0,
+          "perf_frac_median": 0.5420079288622762,
+          "perf_frac_mean": 0.5478110434803913,
+          "perf_frac_n": 9
+        },
+        "avg_total_tokens": 2965795.475,
+        "avg_turns": 66.375,
+        "avg_steps": 71.55,
+        "avg_peak_context": 70005.975,
+        "compacted_runs": 0,
+        "end_reasons": {
+          "completed": 39,
+          "limits_exceeded": 1
+        },
+        "capped_calls": 0,
+        "over_call_limit_runs": 0,
+        "empty_reply_nudges": null
+      },
+      "gpt-oss-120b": {
+        "runs": 81,
+        "passed": 5,
+        "pass@1": 0.06172839506172839,
+        "fail_classes": {
+          "format_error": 33,
+          "no_solution": 16,
+          "mse": 8,
+          "run_error": 6,
+          "perf": 4,
+          "link_error": 3,
+          "limits_exceeded": 2,
+          "make_no_rule": 2,
+          "compile_error": 1,
+          "gpu": 1
+        },
+        "stage_failures": {
+          "build": 57,
+          "run": 6,
+          "mse": 8,
+          "gpu": 3,
+          "perf": 8
+        },
+        "metrics": {
+          "mse_median": 5.249459e-12,
+          "mse_max": 86250.3,
+          "mse_n": 18,
+          "gpu_avg_mean": 54.40642247639797,
+          "gpu_peak_mean": 79.05555555555556,
+          "gpu_peak_min": 0.0,
+          "perf_frac_median": 0.11971460384970933,
+          "perf_frac_mean": 0.11564517694033231,
+          "perf_frac_n": 6
+        },
+        "avg_total_tokens": 225866.38271604938,
+        "avg_turns": 15.654320987654321,
+        "avg_steps": 10.592592592592593,
+        "avg_peak_context": 10132.41975308642,
+        "compacted_runs": 0,
+        "end_reasons": {
+          "completed": 45,
+          "format_error": 33,
+          "limits_exceeded": 3
+        },
+        "capped_calls": 0,
+        "over_call_limit_runs": 0,
+        "empty_reply_nudges": null
+      },
+      "Llama-3.3-70B-Instruct": {
+        "runs": 82,
+        "passed": 0,
+        "pass@1": 0.0,
+        "fail_classes": {
+          "format_error": 40,
+          "mse": 11,
+          "make_config_stop": 8,
+          "compile_error": 6,
+          "incomplete_solution": 6,
+          "run_error": 6,
+          "no_solution": 3,
+          "api_error": 1,
+          "build_error": 1
+        },
+        "stage_failures": {
+          "build": 65,
+          "run": 6,
+          "mse": 11,
+          "gpu": 5,
+          "perf": 6
+        },
+        "metrics": {
+          "mse_median": 1.780392,
+          "mse_max": 641383300000.0,
+          "mse_n": 11,
+          "gpu_avg_mean": 44.371212121212125,
+          "gpu_peak_mean": 55.63636363636363,
+          "gpu_peak_min": 0.0,
+          "perf_frac_median": 0.1257447003632863,
+          "perf_frac_mean": 0.1257868927920153,
+          "perf_frac_n": 6
+        },
+        "avg_total_tokens": 7544.865853658536,
+        "avg_turns": 3.4146341463414633,
+        "avg_steps": 3.4390243902439024,
+        "avg_peak_context": 1288.6707317073171,
+        "compacted_runs": 0,
+        "end_reasons": {
+          "completed": 41,
+          "format_error": 40,
+          "api_error": 1
+        },
+        "capped_calls": 0,
+        "over_call_limit_runs": 0,
+        "empty_reply_nudges": null
+      },
+      "Kimi-K2.7-Code": {
+        "runs": 40,
+        "passed": 39,
+        "pass@1": 0.975,
+        "fail_classes": {
+          "mse": 1
+        },
+        "stage_failures": {
+          "mse": 1
+        },
+        "metrics": {
+          "mse_median": 0.0,
+          "mse_max": 0.000623047,
+          "mse_n": 40,
+          "gpu_avg_mean": 52.32953385145411,
+          "gpu_peak_mean": 94.875,
+          "gpu_peak_min": 85.0,
+          "perf_frac_median": 0.7310390825559949,
+          "perf_frac_mean": 0.8240854168806774,
+          "perf_frac_n": 10
+        },
+        "avg_total_tokens": 2165575.3,
+        "avg_turns": 43.825,
+        "avg_steps": 44.975,
+        "avg_peak_context": 64455.55,
+        "compacted_runs": 0,
+        "end_reasons": {
+          "completed": 40
+        },
+        "capped_calls": 0,
+        "over_call_limit_runs": 0,
+        "empty_reply_nudges": null
+      },
+      "DeepSeek-V4-Flash-0731": {
+        "runs": 60,
+        "passed": 50,
+        "pass@1": 0.8333333333333334,
+        "fail_classes": {
+          "cut_off": 3,
+          "limits_exceeded": 3,
+          "gpu": 1,
+          "mse": 1,
+          "perf": 1,
+          "toolchain_missing": 1
+        },
+        "stage_failures": {
+          "build": 7,
+          "gpu": 1,
+          "mse": 1,
+          "perf": 1
+        },
+        "metrics": {
+          "mse_median": 0.0,
+          "mse_max": 0.000623047,
+          "mse_n": 53,
+          "gpu_avg_mean": 60.43823571042018,
+          "gpu_peak_mean": 91.64150943396227,
+          "gpu_peak_min": 22.0,
+          "perf_frac_median": 0.7685412819722783,
+          "perf_frac_mean": 0.7506879677853634,
+          "perf_frac_n": 9
+        },
+        "avg_total_tokens": 4165332.75,
+        "avg_turns": 72.26666666666667,
+        "avg_steps": 72.76666666666667,
+        "avg_peak_context": 82829.08333333333,
+        "compacted_runs": 0,
+        "end_reasons": {
+          "completed": 48,
+          "limits_exceeded": 7,
+          "cut_off": 4,
+          "context_overflow": 1
+        },
+        "capped_calls": 0,
+        "over_call_limit_runs": 0,
+        "empty_reply_nudges": null
+      },
+      "Qwen3.8-27B": {
+        "runs": 42,
+        "passed": 25,
+        "pass@1": 0.5952380952380952,
+        "fail_classes": {
+          "context_overflow": 13,
+          "limits_exceeded": 2,
+          "gpu": 1,
+          "mse": 1
+        },
+        "stage_failures": {
+          "gpu": 1,
+          "build": 15,
+          "mse": 1
+        },
+        "metrics": {
+          "mse_median": 0.0,
+          "mse_max": 0.000623524,
+          "mse_n": 27,
+          "gpu_avg_mean": 55.34595819703358,
+          "gpu_peak_mean": 93.81481481481481,
+          "gpu_peak_min": 30.0,
+          "perf_frac_median": null,
+          "perf_frac_mean": null,
+          "perf_frac_n": 0
+        },
+        "avg_total_tokens": 7141198.904761905,
+        "avg_turns": 63.285714285714285,
+        "avg_steps": 73.64285714285714,
+        "avg_peak_context": 162425.19047619047,
+        "compacted_runs": 0,
+        "end_reasons": {
+          "completed": 25,
+          "context_overflow": 14,
+          "limits_exceeded": 3
+        },
+        "capped_calls": 3,
+        "over_call_limit_runs": 0,
+        "empty_reply_nudges": null
+      }
     }
   },
   "problems": {
-    "2D-seq": {
-      "metric": "solve_time",
-      "unit": "s",
-      "higher_better": false,
-      "rows": [
-        {
-          "agent": "claude-pro",
-          "model": "claude-opus-5",
-          "runs": 5,
-          "passed": 0,
-          "pass@1": 0.0,
-          "mse_mean": null,
-          "mse_std": null,
-          "mse_n": 0,
-          "metric_mean": null,
-          "metric_std": null,
-          "metric_min": null,
-          "metric_max": null,
-          "metric_n": 0,
-          "limits": {
-            "capped_calls": null,
-            "over_call_limit": 0,
-            "hung": 0,
-            "empty_reply_nudges": 0
-          }
-        },
-        {
-          "agent": "claude",
-          "model": "DeepSeek-V4-Flash",
-          "runs": 6,
-          "passed": 4,
-          "pass@1": 0.6666666666666666,
-          "mse_mean": null,
-          "mse_std": null,
-          "mse_n": 0,
-          "metric_mean": 10.66293175,
-          "metric_std": 12.144390244390243,
-          "metric_min": 3.000696,
-          "metric_max": 28.740833,
-          "metric_n": 4,
-          "limits": {
-            "capped_calls": null,
-            "over_call_limit": 0,
-            "hung": 0,
-            "empty_reply_nudges": 0
-          }
-        },
-        {
-          "agent": "swe-mini",
-          "model": "DeepSeek-V4-Flash",
-          "runs": 5,
-          "passed": 4,
-          "pass@1": 0.8,
-          "mse_mean": null,
-          "mse_std": null,
-          "mse_n": 0,
-          "metric_mean": 25.30903175,
-          "metric_std": 39.18143187842499,
-          "metric_min": 4.659849,
-          "metric_max": 84.070194,
-          "metric_n": 4,
-          "limits": {
-            "capped_calls": 0,
-            "over_call_limit": 0,
-            "hung": 0,
-            "empty_reply_nudges": null
-          }
-        },
-        {
-          "agent": "swe-mini",
-          "model": "Qwen3.6-35B-A3B-FP8",
-          "runs": 1,
-          "passed": 0,
-          "pass@1": 0.0,
-          "mse_mean": null,
-          "mse_std": null,
-          "mse_n": 0,
-          "metric_mean": null,
-          "metric_std": null,
-          "metric_min": null,
-          "metric_max": null,
-          "metric_n": 0,
-          "limits": {
-            "capped_calls": 0,
-            "over_call_limit": 0,
-            "hung": 0,
-            "empty_reply_nudges": null
-          }
-        },
-        {
-          "agent": "kimi",
-          "model": "Qwen3.6-35B-A3B-FP8",
-          "runs": 1,
-          "passed": 0,
-          "pass@1": 0.0,
-          "mse_mean": null,
-          "mse_std": null,
-          "mse_n": 0,
-          "metric_mean": null,
-          "metric_std": null,
-          "metric_min": null,
-          "metric_max": null,
-          "metric_n": 0,
-          "limits": {
-            "capped_calls": null,
-            "over_call_limit": 0,
-            "hung": 0,
-            "empty_reply_nudges": null
-          }
-        }
-      ]
-    },
     "RabbitCT-LolaBunny": {
       "metric": "mse",
       "unit": "HU^2",

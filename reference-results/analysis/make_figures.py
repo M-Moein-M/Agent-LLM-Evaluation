@@ -10,9 +10,7 @@ and per-round artifact exclusions applied on top, model identities
 canonicalized) — see load_latest_all() for the exact, hardcoded rules. So
 every number on a slide can be traced back to a trace directory, and reruns
 or bug fixes show up on the next regenerate instead of being frozen out by a
-stale date window. 2D-seq is a separate, later study on different (CPU-only)
-hardware and is covered in its own figures — see make_figures_2dseq.py — not
-folded into this A40 scope.
+stale date window. Only A40 rounds are in scope.
 
 Needs matplotlib + numpy. On the cluster:
     uv venv /tmp/slidesenv --python 3.12

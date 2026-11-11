@@ -79,7 +79,7 @@ if [[ ! -f "$AGENT_SIF" ]]; then
 fi
 
 # GPU passthrough is conditional. The harness now also runs CPU-only problems
-# (e.g. 2D-seq on the test cluster), where --nv on a node without an NVIDIA
+# (e.g. on a node without a GPU), where --nv on a node without an NVIDIA
 # driver is at best noise. auto = pass --nv only when a GPU is actually visible;
 # EVAL_GPU=1 forces it on, EVAL_GPU=0 forces it off.
 NV_FLAG=()

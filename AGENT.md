@@ -168,10 +168,8 @@ Per-agent notes:
    passes the evidence through your checker (inside an agent image with `apptainer exec --nv` for GPU
    problems). Then run `tests/endpoint/run.sh ... --problem <name>` and update this file's problem list.
 
-Problems: `tiled-gemm` (CUDA GEMM, graded on % of cuBLAS), `stream-compact` (CUDA scan), `2D-seq`
-(CPU SOR solver, graded on wall time, `src/main.c` and the verifier are frozen and checked by an
-`integrity` stage), `RabbitCT-LolaBunny` (CUDA backprojection, default) and `RabbitCT-LolaOMP`
-(OpenMP). RabbitCT needs about 4.5 GB of input from `problems/RabbitCT-LolaBunny/download-input.sh`,
+Problems: `tiled-gemm` (CUDA GEMM, graded on % of cuBLAS), `stream-compact` (CUDA scan),
+`RabbitCT-LolaBunny` (CUDA backprojection, default) and `RabbitCT-LolaOMP` (OpenMP). RabbitCT needs about 4.5 GB of input from `problems/RabbitCT-LolaBunny/download-input.sh`,
 which `run_eval.sh` calls when `data/RabbitCT` is missing. The tiled-gemm prompt names an A40.
 
 ## Add an agent
