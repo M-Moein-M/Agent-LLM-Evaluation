@@ -212,6 +212,19 @@ result and the token cost are printed and saved to `tests/endpoint/last-run.md`.
   The sessions behind the pass@1 matrix are in the Hugging Face dataset
   `m-moein-m/Agent-LLM-Evaluation-Traces`.
 - `tools/trace-vis/`: `./run.sh -w <repo>` (build the image with `./build.sh`). Needs `results/runs.jsonl`.
+- To browse the Hugging Face traces in trace-vis, extract them first. The viewer reads raw per-round
+  files and never Parquet, so `tools/trace-vis/hf_extract.py` (needs `pyarrow`) writes
+  `results/runs.jsonl` and one folder per round (`agent.hf.json`, `solution.json`,
+  `changed_diff.txt`). The trace kind `hf` in `tools/trace-vis/parsers.py` reads `agent.hf.json`.
+  ```bash
+  pip install pyarrow huggingface_hub
+  hf download m-moein-m/Agent-LLM-Evaluation-Traces --repo-type dataset --local-dir hf-traces
+  python3 tools/trace-vis/hf_extract.py --in hf-traces/data --out hf-eval-traces
+  tools/trace-vis/run.sh -w hf-eval-traces --runs results/runs.jsonl
+  ```
+  `hf-traces/` is the download and `hf-eval-traces/` the extracted rounds (about 360 MB in full), both
+  gitignored. Filters: `--problem`, `--harness`, `--model`, `--passed yes|no` (repeatable) and `--limit N`.
+  The rows hold normalized messages, so the timeline has no harness log files.
 
 ## Versions the results were measured with
 

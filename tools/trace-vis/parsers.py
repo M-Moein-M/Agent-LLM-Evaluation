@@ -9,7 +9,10 @@ Schemas in this repo (see AGENT.md):
   kimi        agent.stream.jsonl - line-delimited RAW OpenAI chat messages,
                                     no envelope "type" field at all
 
-All four normalize to: {"events": [...], "session_meta": {...}, "warnings": [...]}
+  hf          agent.hf.json      - one row of the Hugging Face traces dataset, written
+                                    by hf_extract.py (already normalized messages)
+
+All of them normalize to: {"events": [...], "session_meta": {...}, "warnings": [...]}
 Event kinds: system | user | assistant_text | thinking | tool_call | log | run_end
 
 An assistant turn carrying tool calls but no prose emits NO assistant_text
@@ -99,6 +102,7 @@ def detect_kind(round_dir):
     """Return (kind, filename) for the trace file present in a round dir, or (None, None)."""
     for fname, kind in (("agent.jsonl", "pi"),
                         ("agent.traj.json", "swe-mini"),
+                        ("agent.hf.json", "hf"),
                         ("agent.stream.jsonl", "stream")):
         if os.path.isfile(os.path.join(round_dir, fname)):
             if kind == "stream":
@@ -147,6 +151,8 @@ def parse_trace(round_dir):
             result = _parse_pi(path)
         elif kind == "swe-mini":
             result = _parse_swemini(path)
+        elif kind == "hf":
+            result = _parse_hf(path)
         elif kind == "claude":
             result = _parse_claude(path)
         elif kind == "kimi":
@@ -553,6 +559,70 @@ def _parse_swemini(path):
             exit_msg = msg  # last one wins; a trajectory only writes one
     events.append(_swemini_run_end(exit_msg, info, messages))
     return {"events": events, "session_meta": meta, "warnings": warnings}
+
+
+# ------------------------------------------------------- Hugging Face ---
+
+def _hf_run_end(meta):
+    """Terminal event from the dataset row's own end_reason (the harness's verdict)."""
+    reason = meta.get("end_reason") or "unknown"
+    severity = meta.get("end_severity") or _END_SEVERITY.get(reason, "error")
+    text, trunc = _cap(_END_LABEL.get(reason, reason))
+    return _new_event("run_end", role="system", text=text, text_truncated=trunc,
+                      is_error=severity == "error", end_reason=reason, end_severity=severity)
+
+
+def _parse_hf(path):
+    """agent.hf.json written by hf_extract.py: normalized messages of one dataset row."""
+    try:
+        with open(path, "r", errors="replace") as f:
+            doc = json.load(f)
+    except Exception as e:
+        return {"events": [], "session_meta": {}, "warnings": [f"failed to load JSON: {e!r}"]}
+
+    meta = doc.get("meta") or {}
+    session_meta = {k: meta.get(k) for k in (
+        "model", "harness", "harness_version", "harness_version_source", "clean",
+        "reasoning_format", "prompt_source", "n_truncated_outputs") if meta.get(k) is not None}
+    events, warnings = [], []
+    pending_calls = {}  # tool_call_id -> event
+
+    for msg in doc.get("messages") or []:
+        role = msg.get("role")
+        if role == "user":
+            text, trunc = _cap(msg.get("content"))
+            events.append(_new_event("user", role="user", text=text, text_truncated=trunc))
+        elif role == "assistant":
+            if msg.get("reasoning"):
+                text, trunc = _cap(msg["reasoning"])
+                events.append(_new_event("thinking", role="assistant", text=text, text_truncated=trunc))
+            if msg.get("content"):
+                text, trunc = _cap(msg["content"])
+                events.append(_new_event("assistant_text", role="assistant", text=text, text_truncated=trunc))
+            for call in msg.get("tool_calls") or []:
+                args = call.get("arguments")
+                try:
+                    args = json.loads(args) if isinstance(args, str) else args
+                except ValueError:
+                    pass
+                ev = _new_event("tool_call", role="assistant", tool_name=call.get("name"),
+                                tool_call_id=call.get("id"), tool_input=args)
+                events.append(ev)
+                if call.get("id"):
+                    pending_calls[call["id"]] = ev
+        elif role == "tool":
+            call_id = msg.get("tool_call_id")
+            out_text, trunc = _cap(msg.get("content"))
+            ev = pending_calls.get(call_id)
+            if ev is not None:
+                ev["tool_output"] = out_text
+                ev["tool_output_truncated"] = trunc or bool(msg.get("truncated"))
+                ev["is_error"] = bool(msg.get("is_error"))
+            else:
+                events.append(_new_event("log", text=f"orphan tool result for {call_id}",
+                                         tool_output=out_text, is_error=bool(msg.get("is_error"))))
+    events.append(_hf_run_end(meta))
+    return {"events": events, "session_meta": session_meta, "warnings": warnings}
 
 
 # --------------------------------------------------------- claude/-pro ---

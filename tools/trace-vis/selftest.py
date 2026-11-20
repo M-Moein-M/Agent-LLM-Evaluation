@@ -198,7 +198,32 @@ def fixture_kimi_cutoff(root):
     return d, "kimi"
 
 
-FIXTURES = [fixture_pi, fixture_swemini, fixture_claude, fixture_kimi]
+def _hf_doc():
+    return {
+        "format": "hf-trace-v1",
+        "meta": {"model": "test-model", "harness": "pi", "end_reason": "completed",
+                 "end_severity": "ok", "n_tool_calls": 1, "has_reasoning": True},
+        "system_prompt": None,
+        "messages": [
+            {"role": "user", "content": "# Task\nMake it fast."},
+            {"role": "assistant", "content": "Inspecting.", "reasoning": "Look first.",
+             "tool_calls": [{"id": "c1", "name": "bash",
+                             "arguments": json.dumps({"command": "ls -la"})}]},
+            {"role": "tool", "tool_call_id": "c1", "name": "bash",
+             "content": "kernel.cu\nMakefile", "is_error": False, "truncated": False},
+        ],
+    }
+
+
+def fixture_hf(root):
+    d = os.path.join(root, "hf", "round-1")
+    os.makedirs(d)
+    with open(os.path.join(d, "agent.hf.json"), "w") as f:
+        json.dump(_hf_doc(), f)
+    return d, "hf"
+
+
+FIXTURES = [fixture_pi, fixture_swemini, fixture_claude, fixture_kimi, fixture_hf]
 
 
 def test_schemas():
@@ -1287,6 +1312,66 @@ def test_js(workspace=None):
           f"exit {proc.returncode} — see the output above")
 
 
+def test_hf():
+    print("hf dataset rows")
+    with tempfile.TemporaryDirectory() as root:
+        d, _ = fixture_hf(root)
+        res = parsers.parse_trace(d)
+        kinds = [e["kind"] for e in res["events"]]
+        check(kinds == ["user", "thinking", "assistant_text", "tool_call", "run_end"],
+              "hf: event order", str(kinds))
+        end = res["events"][-1]
+        check(end["end_reason"] == "completed" and end["end_severity"] == "ok" and not end["is_error"],
+              "hf: run_end from end_reason", json.dumps({k: end.get(k) for k in ("end_reason", "end_severity")}))
+        check(res["session_meta"].get("harness") == "pi", "hf: session meta carried")
+
+        # a failure row: unknown end reasons are errors, a missing one reads as unrecorded
+        doc = _hf_doc()
+        doc["meta"]["end_reason"] = None
+        doc["meta"].pop("end_severity")
+        with open(os.path.join(d, "agent.hf.json"), "w") as f:
+            json.dump(doc, f)
+        end = parsers.parse_trace(d)["events"][-1]
+        check(end["end_reason"] == "unknown" and end["end_severity"] == "warn",
+              "hf: missing end_reason is 'unknown'", repr((end["end_reason"], end["end_severity"])))
+
+    # extractor round trip, only when pyarrow is installed (the viewer itself never needs it)
+    try:
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+    except ImportError:
+        print("  skip hf_extract round trip (pyarrow not installed)")
+        return
+    import hf_extract
+    doc = _hf_doc()
+    row = {"id": "p/pi/m/20260101-000000/round-1", "problem": "p", "harness": "pi", "model": "m",
+           "campaign": "20260101-000000", "round": 1, "passed": True, "fail_class": None,
+           "end_reason": "completed", "end_severity": "ok", "turns": 1, "peak_context": 10,
+           "total_input_tokens": 5, "total_output_tokens": 3, "n_messages": 3, "n_tool_calls": 1,
+           "n_truncated_outputs": 0, "has_reasoning": True, "reasoning_format": "structured",
+           "clean": True, "harness_version": "x", "harness_version_source": "trace",
+           "prompt_source": "trace", "stages_json": json.dumps([{"name": "build", "passed": True}]),
+           "system_prompt": None, "solution_json": "{}", "final_diff": "diff",
+           "messages": doc["messages"]}
+    with tempfile.TemporaryDirectory() as root:
+        pq_path = os.path.join(root, "x.parquet")
+        pq.write_table(pa.Table.from_pylist([row]), pq_path)
+        out = os.path.join(root, "out")
+        check(hf_extract.main(["--in", pq_path, "--out", out]) == 0, "hf_extract: runs")
+        runs = [json.loads(l) for l in open(os.path.join(out, "results", "runs.jsonl"))]
+        check(len(runs) == 1 and runs[0]["agent"] == "pi" and runs[0]["passed"] is True,
+              "hf_extract: runs.jsonl row", json.dumps(runs)[:200])
+        rd = os.path.join(out, "traces", "p", "pi", "m", "20260101-000000", "round-1")
+        res = parsers.parse_trace(rd)
+        check(res["schema"] == "hf" and sum(e["kind"] == "tool_call" for e in res["events"]) == 1,
+              "hf_extract: round parses as hf")
+        check(os.path.isfile(os.path.join(rd, "solution.json"))
+              and os.path.isfile(os.path.join(rd, "changed_diff.txt")), "hf_extract: side files written")
+        hf_extract.main(["--in", pq_path, "--out", out + "2", "--harness", "claude"])
+        check(not [l for l in open(os.path.join(out + "2", "results", "runs.jsonl"))],
+              "hf_extract: --harness filter excludes other harnesses")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -1296,6 +1381,7 @@ def main(argv=None):
     args = ap.parse_args(argv)
 
     test_schemas()
+    test_hf()
     test_run_end()
     test_limits()
     test_fail_class()

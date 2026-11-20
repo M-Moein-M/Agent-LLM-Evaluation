@@ -43,6 +43,20 @@ More figures are in `reference-results/figures/`. The agent sessions behind the 
 and a small sample is in `reference-results/trace-example/`. Give a figure to your coding agent and ask
 it to rebuild it from your own `results/runs.jsonl`.
 
+## Browse the traces
+
+Download the dataset from Hugging Face, extract all rounds and open them in the trace viewer:
+
+```bash
+pip install pyarrow huggingface_hub
+hf download m-moein-m/Agent-LLM-Evaluation-Traces --repo-type dataset --local-dir hf-traces
+python3 tools/trace-vis/hf_extract.py --in hf-traces/data --out hf-eval-traces
+tools/trace-vis/build.sh && tools/trace-vis/run.sh -w hf-eval-traces --runs results/runs.jsonl
+```
+
+Then open http://localhost:8080 (the script prints the URL and uses the next free port if 8080 is taken).
+On a remote machine, forward the port first: `ssh -N -L 8080:localhost:8080 you@host`.
+
 ## Quickstart
 
 Needs Linux, Apptainer with fakeroot, Python 3 with PyYAML, `jq`, `curl`, and an NVIDIA GPU for the

@@ -32,6 +32,8 @@ results/
 eval-logs/*
 !eval-logs/.gitkeep
 data/
+hf-traces/
+hf-eval-traces/
 smoke-*.out
 tests/endpoint/last-run.md
 
