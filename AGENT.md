@@ -206,10 +206,11 @@ result and the token cost are printed and saved to `tests/endpoint/last-run.md`.
 - `python3 tools/summarize.py` prints a quick table. `python3 tools/collect_results.py` writes
   `results/runs.jsonl` + `summary.json`. Field reference: `docs/results-schema.md`.
 - `reference-results/` holds the author's `summary/` (aggregates), `figures/` (example pictures),
-  `analysis/` (table, HTML and figure scripts), `traces-manifest.csv` and a small `trace-example/`.
+  `analysis/` (table, HTML and figure scripts) and a small `trace-example/`.
   To reproduce a figure for your own data, give a picture to your agent and ask it to rebuild it
   from `results/runs.jsonl` using `reference-results/analysis/make_figures*.py` as a reference.
-  Full traces are GitHub release assets; `reference-results/README.md` says how to fetch them.
+  The sessions behind the pass@1 matrix are in the Hugging Face dataset
+  `m-moein-m/Agent-LLM-Evaluation-Traces`.
 - `tools/trace-vis/`: `./run.sh -w <repo>` (build the image with `./build.sh`). Needs `results/runs.jsonl`.
 
 ## Versions the results were measured with

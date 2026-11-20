@@ -1,5 +1,0 @@
-{
-  "build": ["make"],
-  "run": ["./gemm -c"],
-  "variant_name": "tiled-gemm"
-}

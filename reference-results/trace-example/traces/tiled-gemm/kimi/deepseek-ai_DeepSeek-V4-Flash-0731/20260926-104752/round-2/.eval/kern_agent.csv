@@ -1,0 +1,5 @@
+Generating SQLite file /problem/.eval/prof_agent.sqlite from /problem/.eval/prof_agent.nsys-rep
+Processing [/problem/.eval/prof_agent.sqlite] with [/opt/nvidia/nsight-systems-cli/2026.4.1/target-linux-x64/reports/cuda_gpu_kern_sum.py]... 
+Time (%),Total Time (ns),Instances,Avg (ns),Med (ns),Min (ns),Max (ns),StdDev (ns),Name
+100.0,848612500,50,16972250.0,17464608.0,14961207,17789953,1018642.4,"gemmFastKernel(const float *, const float *, float *, int)"
+

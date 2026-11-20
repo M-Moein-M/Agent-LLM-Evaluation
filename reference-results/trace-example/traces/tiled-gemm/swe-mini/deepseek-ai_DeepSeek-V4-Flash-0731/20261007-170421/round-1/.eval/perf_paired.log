@@ -1,0 +1,4 @@
+BENCH mse=3.056005e-05
+BENCH paired rep=0 cublas_pre=814.287 agent=955.365 cublas_post=793.899
+BENCH paired rep=1 cublas_pre=795.506 agent=960.628 cublas_post=801.132
+BENCH paired rep=2 cublas_pre=809.765 agent=954.381 cublas_post=843.189

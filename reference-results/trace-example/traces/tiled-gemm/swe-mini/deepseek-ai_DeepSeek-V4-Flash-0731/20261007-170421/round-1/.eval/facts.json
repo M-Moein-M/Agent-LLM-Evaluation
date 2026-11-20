@@ -1,0 +1,22 @@
+{
+  "model": "deepseek-ai/DeepSeek-V4-Flash-0731",
+  "agent": "swe-mini",
+  "round": 1,
+  "date": "20261007-182128",
+  "size": 256,
+  "variant": "tiled-gemm",
+  "node": "a0122",
+  "source": "solution.json",
+  "build": {
+    "cmd": "make",
+    "status": 0,
+    "start": 1791390088,
+    "end": 1791390088
+  },
+  "run": {
+    "cmd": "./gemm -c",
+    "status": 0,
+    "start": 1791390088,
+    "end": 1791390093
+  }
+}

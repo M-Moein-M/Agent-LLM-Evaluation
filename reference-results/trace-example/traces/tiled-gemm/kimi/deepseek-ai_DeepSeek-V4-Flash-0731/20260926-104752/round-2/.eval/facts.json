@@ -1,0 +1,22 @@
+{
+  "model": "deepseek-ai/DeepSeek-V4-Flash-0731",
+  "agent": "kimi",
+  "round": 2,
+  "date": "20260926-122551",
+  "size": 256,
+  "variant": "tiled-gemm",
+  "node": "a0124",
+  "source": "solution.json",
+  "build": {
+    "cmd": "make",
+    "status": 0,
+    "start": 1790418351,
+    "end": 1790418351
+  },
+  "run": {
+    "cmd": "./gemm -c",
+    "status": 0,
+    "start": 1790418351,
+    "end": 1790418355
+  }
+}

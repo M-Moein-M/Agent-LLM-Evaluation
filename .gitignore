@@ -35,9 +35,6 @@ data/
 smoke-*.out
 tests/endpoint/last-run.md
 
-# Extracted trace release assets from reference-results
-reference-results/traces/
-
 # claude-pro agent: subscription token and local build/run scratch (never commit)
 agents/apptainer/claude-pro/.secrets/
 agents/apptainer/claude-pro/.setup-home/

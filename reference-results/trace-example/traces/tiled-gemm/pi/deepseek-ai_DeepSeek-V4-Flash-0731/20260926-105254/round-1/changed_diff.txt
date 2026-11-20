@@ -1,0 +1,320 @@
+Only in /tmp/4327889.cluster/tmp.USP9N5tJNJ/work/deepseek-ai_DeepSeek-V4-Flash-0731/round-1/tiled-gemm/: agent.jsonl
+Only in /tmp/4327889.cluster/tmp.USP9N5tJNJ/work/deepseek-ai_DeepSeek-V4-Flash-0731/round-1/tiled-gemm/: agent.stderr.log
+Only in /tmp/4327889.cluster/tmp.USP9N5tJNJ/work/deepseek-ai_DeepSeek-V4-Flash-0731/round-1/tiled-gemm/: .eval
+Only in /tmp/4327889.cluster/tmp.USP9N5tJNJ/work/deepseek-ai_DeepSeek-V4-Flash-0731/round-1/tiled-gemm/: gemm
+Only in /tmp/4327889.cluster/tmp.USP9N5tJNJ/work/deepseek-ai_DeepSeek-V4-Flash-0731/round-1/tiled-gemm/: gemm_bench
+diff -ru '--exclude=.git' <repo>/problems/tiled-gemm/Makefile /tmp/4327889.cluster/tmp.USP9N5tJNJ/work/deepseek-ai_DeepSeek-V4-Flash-0731/round-1/tiled-gemm/Makefile
+--- <repo>/problems/tiled-gemm/Makefile	2026-07-05 23:48:43.000000000 +0200
++++ /tmp/4327889.cluster/tmp.USP9N5tJNJ/work/deepseek-ai_DeepSeek-V4-Flash-0731/round-1/tiled-gemm/Makefile	2026-09-26 11:49:26.717293587 +0200
+@@ -1,7 +1,7 @@
+ NVCC      ?= nvcc
+-NVCCFLAGS ?= -O3 -std=c++14
++NVCCFLAGS ?= -O3 -std=c++14 -use_fast_math
+ # Optional: override to target a specific GPU, e.g. ARCH="-arch=sm_80"
+-ARCH      ?=
++ARCH      ?= -arch=sm_86
+ 
+ gemm: src/main.cu src/gemm.cu src/gemm.cuh
+ 	$(NVCC) $(NVCCFLAGS) $(ARCH) src/main.cu src/gemm.cu -o gemm
+Only in <repo>/problems/tiled-gemm/: PROMPT.md
+Only in /tmp/4327889.cluster/tmp.USP9N5tJNJ/work/deepseek-ai_DeepSeek-V4-Flash-0731/round-1/tiled-gemm/: solution.json
+diff -ru '--exclude=.git' <repo>/problems/tiled-gemm/src/gemm.cu /tmp/4327889.cluster/tmp.USP9N5tJNJ/work/deepseek-ai_DeepSeek-V4-Flash-0731/round-1/tiled-gemm/src/gemm.cu
+--- <repo>/problems/tiled-gemm/src/gemm.cu	2026-07-05 23:48:43.000000000 +0200
++++ /tmp/4327889.cluster/tmp.USP9N5tJNJ/work/deepseek-ai_DeepSeek-V4-Flash-0731/round-1/tiled-gemm/src/gemm.cu	2026-09-26 12:03:07.793961156 +0200
+@@ -1,47 +1,260 @@
+ #include "gemm.cuh"
+ 
+ #include <cuda_runtime.h>
++#include <cuda_pipeline.h>
+ 
+-// Edge length of a square thread-block tile. Each block cooperatively loads a
+-// TILE x TILE sub-block of A and B into shared memory, multiplies them, and
+-// accumulates into the corresponding tile of C.
+-#define TILE 16
+-
+-// Classic shared-memory tiled matrix multiply. The kernel is written to handle
+-// matrices whose dimensions are not a multiple of TILE: every global load is
+-// guarded so out-of-range elements read as zero, and the final store is masked
+-// by `row < N && col < N`.
+-__global__ void gemmKernel(const float* A, const float* B, float* C, int N) {
+-    __shared__ float As[TILE][TILE];
+-    __shared__ float Bs[TILE][TILE];
+-
+-    const int row = blockIdx.y * TILE + threadIdx.y;
+-    const int col = blockIdx.x * TILE + threadIdx.x;
+-    const int numTiles = (N + TILE - 1) / TILE;
+-
+-    float acc = 0.0f;
+-    for (int t = 0; t < numTiles; ++t) {
+-        const int aCol = t * TILE + threadIdx.x;
+-        const int bRow = t * TILE + threadIdx.y;
+-
+-        As[threadIdx.y][threadIdx.x] =
+-            (row < N && aCol < N) ? A[row * N + aCol] : 0.0f;
+-        Bs[threadIdx.y][threadIdx.x] =
+-            (bRow < N && col < N) ? B[bRow * N + col] : 0.0f;
++// ===========================================================================
++//  Optimized tiled GEMM for Ampere (sm_86, NVIDIA A40).
++//
++//  The primary kernel uses shared-memory tiling + register blocking, Ampere's
++//  cp.async for software-pipelined (double-buffered) global->shared loads, and
++//  padded shared buffers to avoid bank conflicts. It runs when N divides
++//  evenly by the block tile (the steady-state case). A guarded fallback
++//  handles arbitrary N correctly.
++// ===========================================================================
++
++// ---------------------------------------------------------------------------
++// Block-tile parameters.
++// ---------------------------------------------------------------------------
++#define BM 128
++#define BN 64
++#define BK 16
++#define BY 16    // thread rows
++#define BX 16    // thread cols -> block is 256 threads
++#define TM (BM / BY)   // register tile rows per thread = 8
++#define TN (BN / BX)   // register tile cols per thread = 4
++
++#define CPASYNC_TX 16  // bytes per cp.async (4 floats)
++
++// cp.async.cg: bypass L1 when staging global->shared so the compute (LDS)
++// shared-load traffic keeps full L1 bandwidth.
++__device__ __forceinline__ void cpAsyncCG(float* smem, const float* gmem) {
++    unsigned s = (unsigned)__cvta_generic_to_shared(smem);
++    asm volatile("cp.async.cg.shared.global [%0], [%1], 16;\n" ::
++                 "r"(s), "l"(gmem));
++}
++
++// ---------------------------------------------------------------------------
++// Fast path: sizes that are exact multiples of BM (and therefore BN, BK).
++// ---------------------------------------------------------------------------
++__global__ static void __launch_bounds__(256, 3)
++gemmKernelAligned(const float* __restrict__ A,
++                  const float* __restrict__ B,
++                  float* __restrict__ C, int N) {
++    // Double-buffered shared tiles, padded to avoid bank conflicts AND keep
++    // every row 16-byte aligned for cp.async (stride %4 == 0).
++    __shared__ float As[2][BM][BK + 4];
++    __shared__ float Bs[2][BK][BN + 4];
++
++    const int numKTiles = N / BK;
++
++    const int blockRow = blockIdx.y * BM;
++    const int blockCol = blockIdx.x * BN;
++
++    const int rowBase = threadIdx.y * TM;   // 0..15 -> 0,8,...,120
++    const int colBase = threadIdx.x * TN;   // 0..15 -> 0,8,...,120
++    const int tid = threadIdx.y * BX + threadIdx.x;
++
++    // ---- helper: issue cp.async loads for K-tile "kt" into buffer "buf" ----
++    auto issueLoads = [&](int buf, int kt) {
++        const int aK = kt * BK;
++        const int bK = kt * BK;
++
++        // A tile: BM x BK floats, loaded in 16-byte (4-float) groups.
++        // GPB = groups per row; numA = total 16-byte tokens.
++        constexpr int GPB = BK / 4;
++        constexpr int numA = (BM * BK) / 4;
++        constexpr int aIters = (numA + 255) / 256;
++        #pragma unroll
++        for (int e = 0; e < aIters; ++e) {
++            const int g = tid + e * 256;
++            if (g < numA) {
++                const int r = g / GPB;      // which A-row
++                const int k4 = g % GPB;     // cols group
++                cpAsyncCG(&As[buf][r][k4 * 4],
++                          A + (size_t)(blockRow + r) * N + aK + k4 * 4);
++            }
++        }
++
++        // B tile: BK x BN floats, row-major in (K, N).
++        constexpr int GPN = BN / 4;
++        constexpr int numB = (BK * BN) / 4;
++        constexpr int bIters = (numB + 255) / 256;
++        #pragma unroll
++        for (int e = 0; e < bIters; ++e) {
++            const int g = tid + e * 256;
++            if (g < numB) {
++                const int kc = g / GPN;     // k-row
++                const int c4 = g % GPN;     // cols group
++                cpAsyncCG(&Bs[buf][kc][c4 * 4],
++                          B + (size_t)(bK + kc) * N + blockCol + c4 * 4);
++            }
++        }
++    };
++
++    // Software pipeline with double buffering across the K dimension.
++    float acc[TM][TN];
++    #pragma unroll
++    for (int i = 0; i < TM; ++i)
++        #pragma unroll
++        for (int j = 0; j < TN; ++j) acc[i][j] = 0.0f;
++
++    // Prologue: load tile 0 into buffer 0.
++    issueLoads(0, 0);
++    __pipeline_commit();
++
++    for (int t = 0; t < numKTiles; ++t) {
++        // Prefetch next K-tile into the other buffer.
++        if (t + 1 < numKTiles) {
++            issueLoads((t + 1) & 1, t + 1);
++            __pipeline_commit();
++        }
++
++        // Wait for the current tile's loads (keep the prefetch in flight).
++        __pipeline_wait_prior(t + 1 < numKTiles ? 1 : 0);
+         __syncthreads();
+ 
+-#pragma unroll
+-        for (int k = 0; k < TILE; ++k)
+-            acc += As[threadIdx.y][k] * Bs[k][threadIdx.x];
++        const int buf = t & 1;
++
++        // Double-vectorized inner loop: A and B both loaded as float4.
++        #pragma unroll
++        for (int kkk4 = 0; kkk4 < BK; kkk4 += 4) {
++            float4 av[TM];
++            #pragma unroll
++            for (int i = 0; i < TM; ++i)
++                av[i] = *reinterpret_cast<const float4*>(&As[buf][rowBase + i][kkk4]);
++            #pragma unroll
++            for (int p = 0; p < 4; ++p) {
++                #pragma unroll
++                for (int j4 = 0; j4 < TN; j4 += 4) {
++                    const float4 bv =
++                        *reinterpret_cast<const float4*>(&Bs[buf][kkk4 + p][colBase + j4]);
++                    #pragma unroll
++                    for (int i = 0; i < TM; ++i) {
++                        const float a = (p == 0) ? av[i].x
++                                       : (p == 1) ? av[i].y
++                                       : (p == 2) ? av[i].z : av[i].w;
++                        acc[i][j4 + 0] += a * bv.x;
++                        acc[i][j4 + 1] += a * bv.y;
++                        acc[i][j4 + 2] += a * bv.z;
++                        acc[i][j4 + 3] += a * bv.w;
++                    }
++                }
++            }
++        }
++
++        __syncthreads();  // reader/writer turn-around on shared buffers
++    }
++
++    // Store the register tile to C.
++    const int goutRow = blockRow + rowBase;
++    const int goutCol = blockCol + colBase;
++    #pragma unroll
++    for (int i = 0; i < TM; ++i)
++        #pragma unroll
++        for (int j = 0; j < TN; ++j)
++            C[(size_t)(goutRow + i) * N + (goutCol + j)] = acc[i][j];
++}
++
++// ---------------------------------------------------------------------------
++// Fallback: arbitrary N. Register-blocked + shared tiled, guarded loads.
++// ---------------------------------------------------------------------------
++__global__ static void gemmKernelGuarded(const float* __restrict__ A,
++                                         const float* __restrict__ B,
++                                         float* __restrict__ C, int N) {
++    __shared__ float As[BM][BK + 4];
++    __shared__ float Bs[BK][BN + 4];
++
++    const int numKTiles = (N + BK - 1) / BK;
++
++    const int blockRow = blockIdx.y * BM;
++    const int blockCol = blockIdx.x * BN;
++
++    float acc[TM][TN];
++    #pragma unroll
++    for (int i = 0; i < TM; ++i)
++        #pragma unroll
++        for (int j = 0; j < TN; ++j) acc[i][j] = 0.0f;
++
++    // Cooperative load of the A and B shared tiles (BM*BK + BK*BN entries,
++    // 256 threads total => loop of ceil(...)).
++    const int aTotal = BM * BK;
++    const int bTotal = BK * BN;
++    const int tid = threadIdx.y * BX + threadIdx.x;
++    const int aIters = (aTotal + 255) / 256;
++    const int bIters = (bTotal + 255) / 256;
++
++    for (int t = 0; t < numKTiles; ++t) {
++        const int kStart = t * BK;
++
++        // ---- load A tile (BM x BK) ----
++        for (int e = 0; e < aIters; ++e) {
++            const int idx = tid + e * 256;
++            if (idx < aTotal) {
++                const int r = idx / BK;
++                const int k = idx % BK;
++                const int gRow = blockRow + r;
++                const int gCol = kStart + k;
++                As[r][k] = (gRow < N && gCol < N) ? A[(size_t)gRow * N + gCol] : 0.0f;
++            }
++        }
++
++        // ---- load B tile (BK x BN) ----
++        for (int e = 0; e < bIters; ++e) {
++            const int idx = tid + e * 256;
++            if (idx < bTotal) {
++                const int k = idx / BN;
++                const int c = idx % BN;
++                const int gRow = kStart + k;
++                const int gCol = blockCol + c;
++                Bs[k][c] = (gRow < N && gCol < N) ? B[(size_t)gRow * N + gCol] : 0.0f;
++            }
++        }
++        __syncthreads();
++
++        #pragma unroll
++        for (int kk = 0; kk < BK; ++kk) {
++            float aReg[TM];
++            #pragma unroll
++            for (int i = 0; i < TM; ++i)
++                aReg[i] = As[threadIdx.y * TM + i][kk];
++            #pragma unroll
++            for (int j4 = 0; j4 < TN; j4 += 4) {
++                const float4 bv =
++                    *reinterpret_cast<const float4*>(&Bs[kk][threadIdx.x * TN + j4]);
++                #pragma unroll
++                for (int i = 0; i < TM; ++i) {
++                    acc[i][j4 + 0] += aReg[i] * bv.x;
++                    acc[i][j4 + 1] += aReg[i] * bv.y;
++                    acc[i][j4 + 2] += aReg[i] * bv.z;
++                    acc[i][j4 + 3] += aReg[i] * bv.w;
++                }
++            }
++        }
+         __syncthreads();
+     }
+ 
+-    if (row < N && col < N)
+-        C[row * N + col] = acc;
++    // Guarded store.
++    #pragma unroll
++    for (int i = 0; i < TM; ++i) {
++        const int r = blockRow + threadIdx.y * TM + i;
++        if (r >= N) break;
++        #pragma unroll
++        for (int j = 0; j < TN; ++j) {
++            const int c = blockCol + threadIdx.x * TN + j;
++            if (c < N) C[(size_t)r * N + c] = acc[i][j];
++        }
++    }
+ }
+ 
+ void launchGemm(const float* dA, const float* dB, float* dC, int N) {
+-    dim3 block(TILE, TILE);
+-    dim3 grid(N / TILE, N / TILE);  // one block per output tile
+-    gemmKernel<<<grid, block>>>(dA, dB, dC, N);
+-}
++    if (N % BM == 0 && N % BN == 0 && N % BK == 0) {
++        dim3 block(BX, BY);
++        dim3 grid(N / BN, N / BM);
++        gemmKernelAligned<<<grid, block>>>(dA, dB, dC, N);
++    } else {
++        dim3 block(BX, BY);
++        dim3 grid((N + BN - 1) / BN, (N + BM - 1) / BM);
++        gemmKernelGuarded<<<grid, block>>>(dA, dB, dC, N);
++    }
++}
+\ No newline at end of file

@@ -1,0 +1,830 @@
+/usr/local/cuda/bin/nvcc
+nvcc: NVIDIA (R) Cuda compiler driver
+Copyright (c) 2005-2024 NVIDIA Corporation
+Built on Thu_Mar_28_02:18:24_PDT_2024
+Cuda compilation tools, release 12.4, V12.4.131
+Build cuda_12.4.r12.4/compiler.34097967_0
+---GPU---
+Sat Sep 26 11:11:57 2026       
++-----------------------------------------------------------------------------------------+
+| NVIDIA-SMI 610.57.04              KMD Version: 610.57.04     CUDA UMD Version: 13.3     |
++-----------------------------------------+------------------------+----------------------+
+| GPU  Name                 Persistence-M | Bus-Id          Disp.A | Volatile Uncorr. ECC |
+| Fan  Temp   Perf          Pwr:Usage/Cap |           Memory-Usage | GPU-Util  Compute M. |
+|                                         |                        |               MIG M. |
+|=========================================+========================+======================|
+|   0  NVIDIA A40                     On  |   00000000:C1:00.0 Off |                  Off |
+|  0%   74C    P0            300W /  300W |    1433MiB /  49140MiB |    100%      Default |
+|                                         |                        |                  N/A |
++-----------------------------------------+------------------------+----------------------+
+
++-----------------------------------------------------------------------------------------+
+| Processes:                                                                              |
+|  GPU   GI   CI              PID   Type   Process name                        GPU Memory |
+|        ID   ID                                                               Usage      |
+|=========================================================================================|
+|  No running processes found                                                             |
++-----------------------------------------------------------------------------------------+
+nvcc -O3 -std=c++14  src/main.cu src/gemm.cu -o gemm
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.780392e+00  MISMATCH
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=1.970968e-01  MISMATCH
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 1.780392e+00
+Perf: N=2048 iters=150  total time [s]: 3.68
+Performance: 700.47 GFLOP/s
+/tmp/props.cu: In function 'int main()':
+/tmp/props.cu:5:8: warning: format '%d' expects argument of type 'int', but argument 6 has type 'size_t' {aka 'long unsigned int'} [-Wformat=]
+    5 |   printf("name=%s cc=%d.%d sms=%d shmemPerBlock=%d shmemPerSM=%d maxThreadsPerBlock=%d regsPerBlock=%d\n",
+      |        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~                                                                      
+      |                                                                                                                                                             |
+      |                                                                                                                                                             size_t {aka long unsigned int}
+/tmp/props.cu:5:8: warning: format '%d' expects argument of type 'int', but argument 7 has type 'size_t' {aka 'long unsigned int'} [-Wformat=]
+    5 |   printf("name=%s cc=%d.%d sms=%d shmemPerBlock=%d shmemPerSM=%d maxThreadsPerBlock=%d regsPerBlock=%d\n",
+      |        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~                                                                                                    
+      |                                                                                                                                                                                  |
+      |                                                                                                                                                                                  size_t {aka long unsigned int}
+/tmp/props.cu:7:8: warning: format '%d' expects argument of type 'int', but argument 2 has type 'size_t' {aka 'long unsigned int'} [-Wformat=]
+    7 |   printf("maxShmemPerBlockOptin=%d memClock=%d memBusWidth=%d\n",p.sharedMemPerBlockOptin,p.memoryClockRate,p.memoryBusWidth);
+      |        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~  ~~~~~~~~~~~~~~~~~~~~~~~~
+      |                                                                   |
+      |                                                                   size_t {aka long unsigned int}
+name=NVIDIA A40 cc=8.6 sms=84 shmemPerBlock=49152 shmemPerSM=102400 maxThreadsPerBlock=1024 regsPerBlock=65536
+maxShmemPerBlockOptin=101376 memClock=7251000 memBusWidth=384
+nvcc -O3 -std=c++14 -arch=sm_80 src/main.cu src/gemm.cu -o gemm
+=== RUN ===
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=1000  total time [s]: 3.06
+Performance: 5613.05 GFLOP/s
+/usr/local/bin/nsys
+/usr/bin/ld: /tmp/tmpxft_000000d1_00000000-22_bench.o: in function `main':
+tmpxft_000000d1_00000000-10_bench.cudafe1.cpp:(.text.startup+0x0): multiple definition of `main'; /tmp/tmpxft_000000d1_00000000-19_main.o:tmpxft_000000d1_00000000-6_main.cudafe1.cpp:(.text.startup+0x40): first defined here
+collect2: error: ld returned 1 exit status
+/bin/bash: line 24: /tmp/bench: No such file or directory
+/bin/bash: line 24: /tmp/bench: No such file or directory
+/bin/bash: line 24: /tmp/bench: No such file or directory
+N=2048 time_per=4.144 ms  4.15 TFLOP/s
+N=4096 time_per=29.163 ms  4.71 TFLOP/s
+N=8192 time_per=315.574 ms  3.48 TFLOP/s
+/usr/local/cuda/bin/ncu
+/usr/local/bin/nsys
+---
+Cuda compilation tools, release 12.4, V12.4.131
+Build cuda_12.4.r12.4/compiler.34097967_0
+==PROF== Connected to process 435 (/tmp/prof)
+==PROF== Profiling "gemmFastKernel": 0%....50%....100% - 38 passes
+==PROF== Disconnected from process 435
+==PROF== Report: /tmp/profout.ncu-rep
+N=2048 time_per=4.144 ms  4.15 TFLOP/s
+N=4096 time_per=29.163 ms  4.71 TFLOP/s
+N=8192 time_per=315.574 ms  3.48 TFLOP/s
+N=16384 time_per=1691.429 ms  5.20 TFLOP/s
+    Memory Throughput                   %        45.90
+    DRAM Throughput                     %        13.01
+    Compute (SM) Throughput             %        54.66
+          latency issues. Look at Scheduler Statistics and Warp State Statistics for potential reasons.                 
+    Executed Ipc Active   inst/cycle         2.33
+    Executed Ipc Elapsed  inst/cycle         2.19
+    Issue Slots Busy               %        58.27
+    Issued Ipc Active     inst/cycle         2.33
+    Memory Throughput           Gbyte/second        90.49
+    Section: Scheduler Statistics
+    Issued Warp Per Scheduler                        0.58
+    Active Warps Per Scheduler          warp         3.85
+    Eligible Warps Per Scheduler        warp         1.32
+          Every scheduler is capable of issuing one instruction per cycle, but for this kernel each scheduler only      
+          issues an instruction every 1.7 cycles. This might leave hardware resources underutilized and may lead to     
+          less optimal performance. Out of the maximum of 12 warps per scheduler, this kernel allocates an average of   
+          3.85 active warps per scheduler, but only an average of 1.32 warps were eligible per cycle. Eligible warps    
+          are the subset of active warps that are ready to issue their next instruction. Every cycle with no eligible   
+          warp results in no instruction being issued and the issue slot remains unused. To increase the number of      
+          Reducing stalls indicated on the Warp State Statistics and Source Counters sections can help, too.            
+    Section: Warp State Statistics
+    Warp Cycles Per Issued Instruction             cycle         6.61
+    Warp Cycles Per Executed Instruction           cycle         6.61
+    Avg. Executed Instructions Per Scheduler        inst   7536835.05
+    Avg. Issued Instructions Per Scheduler          inst   7536895.43
+    Issued Instructions                             inst   2532396864
+    Shared Memory Configuration Size           Kbyte          102.40
+    Driver Shared Memory Per Block       Kbyte/block            1.02
+    Dynamic Shared Memory Per Block       byte/block               0
+    Static Shared Memory Per Block       Kbyte/block           34.30
+    Achieved Occupancy                        %        32.07
+          The 4.00 theoretical warps per scheduler this kernel can issue according to its occupancy are below the       
+          registers. This kernel's theoretical occupancy (33.3%) is limited by the required amount of shared memory.    
+          -ab) has an example on optimizing shared memory accesses.                                                     
+              __pipeline_commit();
+              ^
+
+5 errors detected in the compilation of "src/gemm.cu".
+make: *** [Makefile:8: gemm] Error 2
+Verifying tiled GEMM against CPU reference:
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=500  total time [s]: 3.15
+Performance: 2727.07 GFLOP/s
+nvcc -O3 -std=c++14 -arch=sm_80 src/main.cu src/gemm.cu -o gemm
+src/gemm.cu(100): error: identifier "__pipeline_memcpy_async" is undefined
+                      __pipeline_memcpy_async(&As[slot][r][k],
+                      ^
+
+src/gemm.cu(125): error: identifier "__pipeline_memcpy_async" is undefined
+                      __pipeline_memcpy_async(&Bs[slot][k][cf << 2],
+                      ^
+
+src/gemm.cu(153): error: identifier "__pipeline_commit" is undefined
+          __pipeline_commit();
+          ^
+
+src/gemm.cu(159): error: identifier "__pipeline_wait_prior" is undefined
+          __pipeline_wait_prior((issued - 1) - t);
+          ^
+
+src/gemm.cu(164): error: identifier "__pipeline_commit" is undefined
+              __pipeline_commit();
+              ^
+
+5 errors detected in the compilation of "src/gemm.cu".
+make: *** [Makefile:8: gemm] Error 2
+      const int WARP_R = 128 / 64;
+                ^
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+=== correctness ===
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=650  total time [s]: 3.09
+Performance: 3609.28 GFLOP/s
+    uint32_t dd[2],n; float hus[2]; fread(dd,4,2,fp); fread(&n,4,1,fp); fread(hus,4,2,fp);
+                                    ^
+
+
+    uint32_t dd[2],n; float hus[2]; fread(dd,4,2,fp); fread(&n,4,1,fp); fread(hus,4,2,fp);
+                                                      ^
+
+    uint32_t dd[2],n; float hus[2]; fread(dd,4,2,fp); fread(&n,4,1,fp); fread(hus,4,2,fp);
+                                                                        ^
+
+    fread(hm,8,12,fp); fread(himg,4,w*h,fp); fclose(fp);
+    ^
+
+    fread(hm,8,12,fp); fread(himg,4,w*h,fp); fclose(fp);
+                       ^
+
+    uint32_t dd[2],n; float hus[2]; fread(dd,4,2,fp); fread(&n,4,1,fp); fread(hus,4,2,fp);
+                                    ^
+
+
+    uint32_t dd[2],n; float hus[2]; fread(dd,4,2,fp); fread(&n,4,1,fp); fread(hus,4,2,fp);
+                                                      ^
+
+    uint32_t dd[2],n; float hus[2]; fread(dd,4,2,fp); fread(&n,4,1,fp); fread(hus,4,2,fp);
+                                                                        ^
+
+    fread(hm,8,12,fp); fread(himg,4,w*h,fp); fclose(fp);
+    ^
+
+    fread(hm,8,12,fp); fread(himg,4,w*h,fp); fclose(fp);
+                       ^
+
+/tmp/bench.cu: In function 'void run(unsigned int, int, int, int, const char*)':
+   34 |   uint32_t dd[2],n; float hus[2]; fread(dd,4,2,fp); fread(&n,4,1,fp); fread(hus,4,2,fp);
+      |                                  ~~~~~^~~~~~~~~~~~~~
+   34 |   uint32_t dd[2],n; float hus[2]; fread(dd,4,2,fp); fread(&n,4,1,fp); fread(hus,4,2,fp);
+      |                                                       ~~~~~^~~~~~~~~~~~~~
+   34 |   uint32_t dd[2],n; float hus[2]; fread(dd,4,2,fp); fread(&n,4,1,fp); fread(hus,4,2,fp);
+      |                                                                            ~~~~~^~~~~~~~       
+   37 |   fread(hm,8,12,fp); fread(himg,4,w*h,fp); fclose(fp);
+      |   ~~~^~~~~~~~~~~~~~~
+   37 |   fread(hm,8,12,fp); fread(himg,4,w*h,fp); fclose(fp);
+      |                       ~~~~~^~~~~~~~~~~~~~~~~~~~
+      const int WARP_R = 128 / 64;
+                ^
+
+
+/bin/bash: line 1:   682 Segmentation fault      (core dumped) /tmp/bench $n
+/bin/bash: line 1:   686 Segmentation fault      (core dumped) /tmp/bench $n
+/bin/bash: line 1:   690 Segmentation fault      (core dumped) /tmp/bench $n
+      const int WARP_R = 128 / 64;
+                ^
+
+
+exit=0
+N=2048 time_per=9.556 ms  1.80 TFLOP/s
+N=4096 time_per=49.919 ms  2.75 TFLOP/s
+N=8192 time_per=271.324 ms  4.05 TFLOP/s
+    size_t bseed=123; for(size_t i=0;i<by/4;i++){ ((float*)A)[i%32]=(float)((i*2654435761u)>>13&0x3fff)*0.0001f; }
+      const int WR = BM / 64, WC = BN / 32;
+          detected during instantiation of "double run<BM,BN,BK,THREADS,STAGES,MODE>(const float *, const float *, float *, int, int) [with BM=128, BN=128, BK=16, THREADS=256, STAGES=2, MODE=0]" at line 223
+      const int WR = BM / 64, WC = BN / 32;
+          detected during instantiation of "double run<BM,BN,BK,THREADS,STAGES,MODE>(const float *, const float *, float *, int, int) [with BM=128, BN=128, BK=16, THREADS=256, STAGES=2, MODE=0]" at line 223
+=== build exit 0 ===
+/bin/bash: line 1:   796 Segmentation fault      (core dumped) /tmp/sweep 2>&1
+/tmp/sweep.cu(199): error: identifier "AS" is undefined
+      const size_t sh = (size_t)BM*AS*STAGES*4 + (size_t)BK*BS*STAGES*4;
+/tmp/sweep.cu(199): error: identifier "BS" is undefined
+      const size_t sh = (size_t)BM*AS*STAGES*4 + (size_t)BK*BS*STAGES*4;
+2 errors detected in the compilation of "/tmp/sweep.cu".
+=== exit 2 ===
+/bin/bash: line 1:   811 Segmentation fault      (core dumped) /tmp/sweep 2>&1
+    size_t bseed=123; for(size_t i=0;i<by/4;i++){ ((float*)A)[i%32]=(float)((i*2654435761u)>>13&0x3fff)*0.0001f; }
+      const int WR = BM / 64, WC = BN / 32;
+          detected during instantiation of "double run<BM,BN,BK,THREADS,STAGES,MODE>(const float *, const float *, float *, int, int) [with BM=128, BN=128, BK=16, THREADS=256, STAGES=2, MODE=0]" at line 233
+      const int WR = BM / 64, WC = BN / 32;
+          detected during instantiation of "double run<BM,BN,BK,THREADS,STAGES,MODE>(const float *, const float *, float *, int, int) [with BM=128, BN=128, BK=16, THREADS=256, STAGES=2, MODE=0]" at line 233
+=== exit 0 ===
+/bin/bash: line 1:   851 Segmentation fault      (core dumped) /tmp/sweep 2>&1
+      __attribute__((shared)) float Bs[STAGES][BK][BS];
+exit=0
+sh=36864
+attr er=no error
+launch er=no error
+sync er=no error
+prog exit=0
+// Sweep harness: times many GEMM kernel configurations on the A40.
+// Instantiated as templates; driver picks grid dims. Reports TFLOP/s.
+#include <cuda_runtime.h>
+#include <cuda_pipeline.h>
+#include <cstdio>
+---patch main to run configs one at a time via argv---
+/bin/bash: line 3: python3: command not found
+    size_t bseed=123; for(size_t i=0;i<by/4;i++){ ((float*)A)[i%32]=(float)((i*2654435761u)>>13&0x3fff)*0.0001f; }
+      const int WR = BM / 64, WC = BN / 32;
+          detected during instantiation of "double run<BM,BN,BK,THREADS,STAGES,MODE>(const float *, const float *, float *, int, int) [with BM=128, BN=128, BK=16, THREADS=256, STAGES=2, MODE=0]" at line 233
+build=0
+/bin/bash: line 24:   934 Segmentation fault      (core dumped) /tmp/sweep $cfg
+  rc=139
+/bin/bash: line 24:   938 Segmentation fault      (core dumped) /tmp/sweep $cfg
+  rc=139
+      const int WR = BM / 64, WC = BN / 32;
+          detected during instantiation of "double run<BM,BN,BK,THREADS,STAGES,MODE>(const float *, const float *, float *, int, int) [with BM=128, BN=128, BK=16, THREADS=256, STAGES=2, MODE=0]" at line 233
+      const int WR = BM / 64, WC = BN / 32;
+build=0
+N=4096 BM=128 BN=128 BK=16 thr=256 st=2 reg: 
+2.80 TFLOP/s
+  rc=0
+N=4096 BM=128 BN=128 BK=32 thr=256 st=3 async: 
+  LAUNCH FAIL (sh=104448B): invalid argument
+-1.00 TFLOP/s
+  rc=0
+N=4096 BM=128 BN=128 BK=32 thr=256 st=2 async: 
+  LAUNCH FAIL (sh=69632B): invalid argument
+-1.00 TFLOP/s
+  rc=0
+N=4096 BM=128 BN=128 BK=16 thr=256 st=2 reg: 
+2.19 TFLOP/s
+N=4096 BM=128 BN=128 BK=8 thr=256 st=2 reg: 
+2.48 TFLOP/s
+N=4096 BM=128 BN=128 BK=16 thr=256 st=3 reg: 
+  LAUNCH FAIL (sh=55296B): invalid argument
+-1.00 TFLOP/s
+N=4096 BM=128 BN=128 BK=16 thr=256 st=2 async: 
+3.86 TFLOP/s
+N=4096 BM=128 BN=128 BK=8 thr=256 st=4 async: 
+5.59 TFLOP/s
+N=4096 BM=128 BN=128 BK=8 thr=256 st=6 async: 
+  LAUNCH FAIL (sh=61440B): invalid argument
+-1.00 TFLOP/s
+/tmp/sweep2.cu(27): error: identifier "TORCH" is undefined
+    const int warpsY = BN / (TORCH? );
+/tmp/sweep2.cu(27): error: expected an expression
+build=2
+/bin/bash: line 116: /tmp/sweep2: No such file or directory
+// Broad empirical GEMM sweep on A40, cp.async with dynamic shared memory.
+// Configurable block tile, K-slice, #stages, threads, and register tile.
+#include <cuda_runtime.h>
+#include <cuda_pipeline.h>
+#include <cstdio>
+#include <cstdlib>
+/usr/bin/ld: /usr/lib/gcc/x86_64-linux-gnu/11/../../../x86_64-linux-gnu/Scrt1.o: in function `_start':
+(.text+0x1b): undefined reference to `main'
+collect2: error: ld returned 1 exit status
+build=1
+/bin/bash: line 1: /tmp/sweep2: No such file or directory
+    const int AS=BK, BS=BN;
+          detected during instantiation of "double runTA<BM,BN,BK,THREADS,STAGES>(const float *, const float *, float *, int, int) [with BM=128, BN=128, BK=8, THREADS=256, STAGES=3]" at line 108
+build=0
+=== transposed-A cp.async sweep, N=4096 ===
+BM=128 BN=128 BK=8 thr=256 st=3: 3.83 TFLOP/s
+BM=128 BN=128 BK=8 thr=256 st=4: 7.35 TFLOP/s
+BM=128 BN=128 BK=8 thr=256 st=6: 4.78 TFLOP/s
+BM=128 BN=128 BK=16 thr=256 st=2: 5.08 TFLOP/s
+BM=128 BN=128 BK=16 thr=256 st=3: 5.23 TFLOP/s
+BM=128 BN=128 BK=16 thr=256 st=4: 4.69 TFLOP/s
+BM=128 BN=128 BK=32 thr=256 st=2: 6.47 TFLOP/s
+BM=128 BN=128 BK=32 thr=256 st=3: 6.11 TFLOP/s
+BM=128 BN=128 BK=16 thr=512 st=2: 3.89 TFLOP/s
+BM=128 BN=128 BK=16 thr=512 st=3: 3.35 TFLOP/s
+BM=64 BN=64 BK=16 thr=128 st=3: 3.70 TFLOP/s
+BM=64 BN=128 BK=8 thr=256 st=4: 3.43 TFLOP/s
+==PROF== Profiling "kTA": 0%....50%....100% - 38 passes
+==PROF== Disconnected from process 1174
+==PROF== Report: /tmp/profp2.ncu-rep
+    DRAM Frequency          cycle/nsecond         7.24
+    Memory Throughput                   %        51.35
+    DRAM Throughput                     %         1.08
+    L1/TEX Cache Throughput             %        54.64
+    Compute (SM) Throughput             %        57.85
+    Executed Ipc Active   inst/cycle         2.46
+    Executed Ipc Elapsed  inst/cycle         2.31
+    Issue Slots Busy               %        61.56
+    Memory Throughput           Gbyte/second         7.54
+          conflict across all 28966912 shared store requests.This results in 53985626 bank conflicts,  which represent  
+    Active Warps Per Scheduler          warp         3.85
+    Eligible Warps Per Scheduler        warp         1.36
+    Warp Cycles Per Issued Instruction             cycle         6.26
+    Warp Cycles Per Executed Instruction           cycle         6.26
+    Section: Occupancy
+    Theoretical Active Warps per SM        warp           16
+    Theoretical Occupancy                     %        33.33
+    Achieved Occupancy                        %        32.10
+    Achieved Active Warps Per SM           warp        15.41
+          The 4.00 theoretical warps per scheduler this kernel can issue according to its occupancy are below the       
+          hardware maximum of 12. This kernel's theoretical occupancy (33.3%) is limited by the number of required      
+    Average DRAM Active Cycles       cycle    805370.67
+    Total DRAM Elapsed Cycles        cycle    891680768
+-rw-r--r-- 1 ${USER} <project> 915324 Sep 26 11:32 /tmp/profp2.ncu-rep
+"ID","Process ID","Process Name","Host Name","Kernel Name","Context","Stream","Block Size","Grid Size","Device","CC","Section Name","Metric Name","Metric Unit","Metric Value","Rule Name","Rule Type","Rule Description","Estimated Speedup Type","Estimated Speedup"
+"0","1174","profp","127.0.0.1","void kTA<(int)128, (int)128, (int)8, (int)256, (int)4>(const float *, const float *, float *, int)","1","7","(256, 1, 1)","(1024, 1, 1)","0","8.6","GPU Speed Of Light Throughput","DRAM Frequency","cycle/nsecond","7.24",
+"0","1174","profp","127.0.0.1","void kTA<(int)128, (int)128, (int)8, (int)256, (int)4>(const float *, const float *, float *, int)","1","7","(256, 1, 1)","(1024, 1, 1)","0","8.6","GPU Speed Of Light Throughput","SM Frequency","cycle/nsecond","1.30",
+"0","1174","profp","127.0.0.1","void kTA<(int)128, (int)128, (int)8, (int)256, (int)4>(const float *, const float *, float *, int)","1","7","(256, 1, 1)","(1024, 1, 1)","0","8.6","GPU Speed Of Light Throughput","Elapsed Cycles","cycle","13386489",
+"0","1174","profp","127.0.0.1","void kTA<(int)128, (int)128, (int)8, (int)256, (int)4>(const float *, const float *, float *, int)","1","7","(256, 1, 1)","(1024, 1, 1)","0","8.6","GPU Speed Of Light Throughput","Memory Throughput","%","51.35",
+      1 Achieved Active Warps Per SM
+      1 Active Warps Per Scheduler
+      1 Avg. Issued Instructions Per Scheduler
+      1 Eligible Warps Per Scheduler
+      1 Issued Instructions
+      1 Issued Ipc Active
+      1 Issued Warp Per Scheduler
+      1 No Eligible
+      1 One or More Eligible
+      1 Theoretical Active Warps per SM
+      1 Warp Cycles Per Executed Instruction
+      1 Warp Cycles Per Issued Instruction
+          latency issues. Look at Scheduler Statistics and Warp State Statistics for potential reasons.                 
+
+    Section: GPU Speed Of Light Roofline Chart
+    INF   The ratio of peak float (fp32) to double (fp64) performance on this device is 64:1. The kernel achieved 48%   
+          of this device's fp32 peak performance and 0% of its fp64 peak performance. See the Kernel Profiling Guide    
+          (https://docs.nvidia.com/nsight-compute/ProfilingGuide/index.html#roofline) for more details on roofline      
+          analysis.                                                                                                     
+
+    Section: PM Sampling
+    ------------------------- ----------- ------------
+    Metric Name               Metric Unit Metric Value
+    ------------------------- ----------- ------------
+    Maximum Buffer Size             Mbyte         4.13
+    Dropped Samples                sample            0
+    Maximum Sampling Interval     msecond         1.02
+    # Pass Groups                                    2
+    ------------------------- ----------- ------------
+
+    Section: Compute Workload Analysis
+    -------------------- ----------- ------------
+    Metric Name          Metric Unit Metric Value
+    -------------------- ----------- ------------
+    Executed Ipc Active   inst/cycle         2.46
+    Executed Ipc Elapsed  inst/cycle         2.31
+    Issue Slots Busy               %        61.56
+    Issued Ipc Active     inst/cycle         2.46
+    SM Busy                        %        61.56
+    -------------------- ----------- ------------
+
+    INF   FMA is the highest-utilized pipeline (51.6%) based on active cycles, taking into account the rates of its     
+          different instructions. It executes 32-bit floating point (FADD, FMUL, FMAD, ...) and integer (IMUL, IMAD)    
+          operations. It is well-utilized, but should not be a bottleneck.                                              
+
+    Section: Memory Workload Analysis
+    --------------------------- ------------ ------------
+    Metric Name                  Metric Unit Metric Value
+    --------------------------- ------------ ------------
+    Memory Throughput           Gbyte/second         7.54
+    Mem Busy                               %        51.35
+    Max Bandwidth                          %        37.78
+    INF   The ratio of peak float (fp32) to double (fp64) performance on this device is 64:1. The kernel achieved 48%   
+          operations. It is well-utilized, but should not be a bottleneck.                                              
+    const int WPR=THREADS/32/(BN/32);
+          detected during instantiation of "double runO<BM,BN,BK,THREADS,STAGES,MINB>(const float *, const float *, float *, int, int) [with BM=128, BN=128, BK=8, THREADS=256, STAGES=4, MINB=3]" at line 93
+build=0
+=== occupancy sweep N=4096 ===
+128x128 BK8 thr256 st4 minb3: 0.65 TFLOP/s
+128x128 BK8 thr256 st4 minb4: 0.09 TFLOP/s
+128x128 BK8 thr256 st4 minb5: 0.07 TFLOP/s
+128x128 BK8 thr256 st4 minb6: 0.16 TFLOP/s
+128x128 BK8 thr256 st3 minb4: 0.38 TFLOP/s
+128x128 BK8 thr256 st3 minb5: 0.19 TFLOP/s
+    cublasStatus_t st; int algo=-1;
+    cublasStatus_t st; int algo=-1;
+cublas N=2048 time_per=7.723 ms  2.22 TFLOP/s (6.0% peak)
+cublas N=4096 time_per=59.861 ms  2.30 TFLOP/s (6.2% peak)
+cublas N=8192 time_per=422.269 ms  2.60 TFLOP/s (7.0% peak)
+cublas N=16384 time_per=1861.965 ms  4.72 TFLOP/s (12.8% peak)
+/bin/bash: -c: line 1: syntax error near unexpected token `{}'
+/bin/bash: -c: line 1: `cd '/problem' && nvidia-smi --query-gpu=clocks.sm,clocks.max.sm,clocks.mem,power.draw,power.limit,temperature.gpu,utilization.gpu --format=csv; echo "--- during load ---"; (cuda_info(){}; cd /problem && /tmp/cublas_bench 4096 >/dev/null 2>&1 & CU=$!; sleep 2; nvidia-smi --query-gpu=clocks.sm,power.draw,temperature.gpu,utilization.gpu --format=csv,noheader; wait $CU)'
+idle:
+1680 MHz, 1740 MHz, 290.34 W, 72, 100 %
+during load:
+1620 MHz, 300.61 W, 73, 100 %
+=== occupancy sweep N=4096 ===
+128x128 BK8 thr256 st4 minb3: 0.65 TFLOP/s
+128x128 BK8 thr256 st4 minb4: 0.09 TFLOP/s
+128x128 BK8 thr256 st4 minb5: 0.07 TFLOP/s
+128x128 BK8 thr256 st4 minb6: 0.16 TFLOP/s
+128x128 BK8 thr256 st3 minb4: 0.38 TFLOP/s
+128x128 BK8 thr256 st3 minb5: 0.19 TFLOP/s
+128x128 BK8 thr256 st2 minb6: 0.04 TFLOP/s
+128x128 BK16 thr256 st3 minb3: 0.54 TFLOP/s
+128x128 BK16 thr256 st3 minb4: 0.07 TFLOP/s
+128x128 BK16 thr256 st2 minb4: 0.08 TFLOP/s
+128x64 BK8 thr128 st4 minb6: 0.52 TFLOP/s
+nvcc -O3 -std=c++14 -arch=sm_80 src/main.cu src/gemm.cu -o gemm
+=== correctness ===
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Perf: N=2048 iters=500  total time [s]: 3.19
+cc1plus: fatal error: /tmp/bench.cu: No such file or directory
+compilation terminated.
+=== my kernel (single-launch, like grader) ===
+N=1024 mine_peak=1805.7 GF cublas_peak=3637.1 GF ratio=0.496
+N=2048 mine_peak=1691.3 GF cublas_peak=4069.7 GF ratio=0.416
+N=4096 mine_peak=2351.1 GF cublas_peak=4321.1 GF ratio=0.544
+N=8192 mine_peak=4607.9 GF cublas_peak=8017.6 GF ratio=0.575
+=== cuBLAS ===
+cublas N=1024 time_per=0.406 ms  5.29 TFLOP/s (14.3% peak)
+cublas N=2048 time_per=2.133 ms  8.05 TFLOP/s (21.8% peak)
+cublas N=4096 time_per=19.408 ms  7.08 TFLOP/s (19.1% peak)
+cublas N=8192 time_per=149.604 ms  7.35 TFLOP/s (19.9% peak)
+----- N=2048 -----
+N=2048 rep0  MINE=3.51 TFLOP  cuBLAS=6.62 TFLOP  ratio=0.530
+N=2048 rep1  MINE=3.63 TFLOP  cuBLAS=6.94 TFLOP  ratio=0.524
+N=2048 rep2  MINE=3.50 TFLOP  cuBLAS=6.68 TFLOP  ratio=0.524
+----- N=4096 -----
+N=4096 rep0  MINE=5.51 TFLOP  cuBLAS=8.11 TFLOP  ratio=0.679
+N=4096 rep1  MINE=5.55 TFLOP  cuBLAS=7.02 TFLOP  ratio=0.791
+N=4096 rep2  MINE=4.22 TFLOP  cuBLAS=6.22 TFLOP  ratio=0.678
+----- N=8192 -----
+N=8192 rep0  MINE=4.43 TFLOP  cuBLAS=6.84 TFLOP  ratio=0.647
+N=8192 rep1  MINE=5.45 TFLOP  cuBLAS=8.41 TFLOP  ratio=0.649
+N=8192 rep2  MINE=4.31 TFLOP  cuBLAS=7.25 TFLOP  ratio=0.594
+==PROF== Disconnected from process 1772
+==PROF== Report: /tmp/pf.ncu-rep
+    Memory Throughput                   %        46.29
+    Compute (SM) Throughput             %        55.84
+    Issue Slots Busy               %        59.38
+    Issued Ipc Active     inst/cycle         2.38
+    INF   FMA is the highest-utilized pipeline (50.7%) based on active cycles, taking into account the rates of its     
+    Memory Throughput           Gbyte/second       101.32
+    Active Warps Per Scheduler          warp         3.85
+    Eligible Warps Per Scheduler        warp         1.30
+          3.85 active warps per scheduler, but only an average of 1.30 warps were eligible per cycle. Eligible warps    
+          are the subset of active warps that are ready to issue their next instruction. Every cycle with no eligible   
+          eligible warps, avoid possible load imbalances due to highly different execution durations per warp.          
+    Warp Cycles Per Issued Instruction             cycle         6.47
+    Registers Per Thread             register/thread             113
+    Block Limit Registers                 block            2
+    Theoretical Active Warps per SM        warp           16
+    Theoretical Occupancy                     %        33.33
+    Achieved Occupancy                        %        32.01
+    Achieved Active Warps Per SM           warp        15.37
+          hardware maximum of 12. This kernel's theoretical occupancy (33.3%) is limited by the number of required      
+          registers.                                                                                                    
+build=0
+=== in-process sweep vs cuBLAS, N=4096 ===
+128x128 BK8 st4 thr256 RRxRC=8x8 warp8x4: 4.82  cuBLAS=6.50 ratio=0.742
+128x128 BK8 st3 thr256 RRxRC=8x8 warp8x4: 5.35  cuBLAS=6.98 ratio=0.767
+128x128 BK16 st3 thr256 RRxRC=8x8 warp8x4: 5.27  cuBLAS=8.39 ratio=0.628
+128x128 BK16 st4 thr256 RRxRC=8x8 warp8x4: 3.02  cuBLAS=5.56 ratio=0.542
+128x128 BK8 st4 thr512 RRxRC=4x8 warp4x8: 1.85  cuBLAS=8.19 ratio=0.226
+128x128 BK8 st6 thr512 RRxRC=4x8 warp4x8: 3.58  cuBLAS=8.84 ratio=0.405
+128x128 BK16 st4 thr512 RRxRC=4x8 warp4x8: 3.03  cuBLAS=4.72 ratio=0.641
+128x128 BK8 st4 thr128 RRxRC=8x16 warp8x4: 1.76  cuBLAS=3.63 ratio=0.485
+256x128 BK8 st4 thr256 RRxRC=8x8 warp8x4: 5.72  cuBLAS=6.13 ratio=0.933
+128x256 BK8 st4 thr256 RRxRC=8x8 warp8x4: 7.15  cuBLAS=4.81 ratio=1.485
+patching done
+    double err=0,worst=1e30;
+          detected during instantiation of "void S<BM,BN,BK,THREADS,STAGES,RR,RC,WTR,WTC>(cublasHandle_t, const float *, const float *, float *, float *, const float *, float *, int, int, const char *) [with BM=128, BN=128, BK=8, THREADS=256, STAGES=3, RR=8, RC=8, WTR=8, WTC=4]" at line 127
+build=0
+/bin/bash: line 1:  1925 Segmentation fault      (core dumped) /tmp/sweepV 4096 2>&1
+no gdb
+    double err=0,worst=1e30;
+          detected during instantiation of "void S<BM,BN,BK,THREADS,STAGES,RR,RC,WTR,WTC>(cublasHandle_t, const float *, const float *, float *, float *, const float *, float *, int, int, const char *) [with BM=128, BN=128, BK=8, THREADS=256, STAGES=3, RR=8, RC=8, WTR=8, WTC=4]" at line 127
+/bin/bash: line 11:  1968 Segmentation fault      (core dumped) /tmp/sweepV 4096 2>&1
+sed: -e expression #1, char 28: Unmatched ( or \(
+12
+int main(int ac,char**av){
+  int N=ac>1?atoi(av[1]):4096; size_t by=(size_t)N*N*4; int IT=15;
+  float*A,*B,*C,*REF;cudaMalloc(&A,by);cudaMalloc(&B,by);cudaMalloc(&C,by);cudaMalloc(&REF,by);
+  std::vector<float> hv; // not used
+  cublasHandle_t h;cublasCreate(&h);
+  float a=1.f,b=0.f;
+  // fill data
+  { float*hb=new float[by/4]; for(size_t i=0;i<by/4;i++){hb[i]=((i*2654435761u)>>13&0x3fff)*2e-5f-6.5e-4f;} cudaMemcpy(A,hb,by,cudaMemcpyHostToDevice); for(size_t i=0;i<by/4;i++){hb[i]=((i*40503u)>>11&0x3fff)*2e-5f-6.5e-4f;} cudaMemcpy(B,hb,by,cudaMemcpyHostToDevice); delete[] hb; }
+  // reference = cuBLAS
+  cublasSgemm(h,CUBLAS_OP_N,CUBLAS_OP_N,N,N,N,&a,A,N,B,N,&b,REF,N);
+  cudaDeviceSynchronize();
+  float*hREF=new float[by/4];float*hOUT=new float[by/4];
+  cudaMemcpy(hREF,REF,by,cudaMemcpyDeviceToHost);
+  printf("=== VALIDATED sweep vs cuBLAS, N=%d ===\n",N);
+#define S0(bm,bn,bk,th,st,rr,rc,wtr,wtc,nm) S<bm,bn,bk,th,st,rr,rc,wtr,wtc>(h,A,B,C,REF,hREF,hOUT,N,IT,nm)
+  S0(128,128,8,256,3,8,8,8,4,"128x128 BK8 st3 8x8");
+  S0(128,128,8,256,4,8,8,8,4,"128x128 BK8 st4 8x8");
+  S0(128,128,16,256,3,8,8,8,4,"128x128 BK16 st3 8x8");
+  S0(128,256,8,512,4,8,8,8,4,"128x256 BK8 st4 8x8");
+  S0(128,256,8,512,4,8,8,8,4,"128x256 BK8 st4 8x8");
+  S0(128,256,8,512,4,8,8,8,4,"128x256 BK8 st4 8x8");
+  S0(128,256,8,512,4,8,8,8,4,"128x256 BK8 st4 8x8");
+  S0(128,256,8,512,4,8,8,8,4,"128x256 BK8 st4 8x8");
+  S0(128,256,8,512,4,8,8,8,4,"128x256 BK8 st4 8x8");
+  S0(128,256,8,512,4,8,8,8,4,"128x256 BK8 st4 8x8");
+  S0(128,256,8,512,4,8,8,8,4,"128x256 BK8 st4 8x8");
+  return 0;
+  S0(128,128,8,256,3,8,8,8,4,"128x128 BK8 st3 8x8");$
+  S0(128,128,8,256,4,8,8,8,4,"128x128 BK8 st4 8x8");$
+  S0(128,128,16,256,3,8,8,8,4,"128x128 BK16 st3 8x8");$
+  S0(128,256,8,512,4,8,8,8,4,"128x256 BK8 st4 8x8");$
+  S0(128,256,8,512,4,8,8,8,4,"128x256 BK8 st4 8x8");$
+  S0(128,256,8,512,4,8,8,8,4,"128x256 BK8 st4 8x8");$
+  S0(128,256,8,512,4,8,8,8,4,"128x256 BK8 st4 8x8");$
+  S0(128,256,8,512,4,8,8,8,4,"128x256 BK8 st4 8x8");$
+  S0(128,256,8,512,4,8,8,8,4,"128x256 BK8 st4 8x8");$
+  S0(128,256,8,512,4,8,8,8,4,"128x256 BK8 st4 8x8");$
+  S0(128,256,8,512,4,8,8,8,4,"128x256 BK8 st4 8x8");$
+  return 0;$
+#define S0(bm,bn,bk,th,st,rr,rc,wtr,wtc,nm) S<bm,bn,bk,th,st,rr,rc,wtr,wtc>(h,A,B,C,REF,hREF,hOUT,N,IT,nm)
+  S0(128,128,8,256,3,8,8,8,4,"128x128 BK8 st3 8x8");
+  S0(128,128,8,256,4,8,8,8,4,"128x128 BK8 st4 8x8");
+  S0(128,128,16,256,3,8,8,8,4,"128x128 BK16 st3 8x8");
+  S0(128,256,8,512,4,8,8,8,4,"128x256 BK8 st4 8x8");
+  S0(128,256,8,512,3,8,8,8,4,"128x256 BK8 st3 8x8");
+  S0(128,256,16,512,3,8,8,8,4,"128x256 BK16 st3 8x8");
+  S0(256,128,8,512,4,8,8,8,4,"256x128 BK8 st4 8x8");
+  S0(256,256,8,512,3,8,8,8,4,"256x256 BK8 st3 8x8");
+  S0(64,256,8,256,4,8,8,8,4,"64x256 BK8 st4 8x8");
+  S0(128,384,8,512,3,8,8,8,4,"128x384 BK8 st3 8x8");
+  S0(128,256,8,512,4,8,8,8,4,"128x256 BK8 st4 8x8");
+  S0(128,256,8,512,4,8,8,8,4,"128x256 BK8 st4 8x8");
+#define S0(bm,bn,bk,th,st,rr,rc,wtr,wtc,nm) S<bm,bn,bk,th,st,rr,rc,wtr,wtc>(h,A,B,C,REF,hREF,hOUT,N,IT,nm)
+  S0(128,128,8,256,3,8,8,8,4,"128x128 BK8 st3 8x8");
+  S0(128,128,8,256,4,8,8,8,4,"128x128 BK8 st4 8x8");
+  S0(128,128,16,256,3,8,8,8,4,"128x128 BK16 st3 8x8");
+  S0(128,256,8,512,4,8,8,8,4,"128x256 BK8 st4 8x8");
+  S0(128,256,8,512,3,8,8,8,4,"128x256 BK8 st3 8x8");
+  S0(128,256,16,512,3,8,8,8,4,"128x256 BK16 st3 8x8");
+  S0(256,128,8,512,4,8,8,8,4,"256x128 BK8 st4 8x8");
+  S0(256,256,8,512,3,8,8,8,4,"256x256 BK8 st3 8x8");
+  S0(64,256,8,256,4,8,8,8,4,"64x256 BK8 st4 8x8");
+  S0(128,384,8,512,3,8,8,8,4,"128x384 BK8 st3 8x8");
+  return 0;
+}
+---compiling---
+1
+    double err=0,worst=1e30;
+          detected during instantiation of "void S<BM,BN,BK,THREADS,STAGES,RR,RC,WTR,WTC>(cublasHandle_t, const float *, const float *, float *, float *, const float *, float *, int, int, const char *) [with BM=128, BN=128, BK=8, THREADS=256, STAGES=3, RR=8, RC=8, WTR=8, WTC=4]" at line 127
+build=0
+=== VALIDATED sweep vs cuBLAS, N=4096 ===
+128x128 BK8 st3 8x8                      6.73 TFLOP/s  (MSE vs cublas 5.43e-01) **INCORRECT**
+128x128 BK8 st4 8x8                      6.71 TFLOP/s  (MSE vs cublas 5.43e-01) **INCORRECT**
+128x128 BK16 st3 8x8                     7.07 TFLOP/s  (MSE vs cublas 5.43e-01) **INCORRECT**
+128x256 BK8 st4 8x8                      7.41 TFLOP/s  (MSE vs cublas 5.43e-01) **INCORRECT**
+128x256 BK8 st3 8x8                      7.47 TFLOP/s  (MSE vs cublas 5.43e-01) **INCORRECT**
+128x256 BK16 st3 8x8                     7.39 TFLOP/s  (MSE vs cublas 5.43e-01) **INCORRECT**
+256x128 BK8 st4 8x8                      7.00 TFLOP/s  (MSE vs cublas 5.43e-01) **INCORRECT**
+256x256 BK8 st3 8x8                      10.73 TFLOP/s  (MSE vs cublas 5.43e-01) **INCORRECT**
+64x256 BK8 st4 8x8                       8.08 TFLOP/s  (MSE vs cublas 5.43e-01) **INCORRECT**
+128x384 BK8 st3 8x8                      10.15 TFLOP/s  (MSE vs cublas 5.43e-01) **INCORRECT**
+mine vs CPU   = 1.94e-11
+cuBLAS vs CPU = 9.12e+00
+mine vs cuBLAS= 9.12e+00
+sample mine[0,0]=13.7807 cublas=8.44369 cpu=13.7807
+hA[0]=-0.00065 hB[0]=-0.00065
+/tmp/sweepV2.cu(89): error: namespace "std" has no member "to_string"
+    printf("%-44s %.2f TFLOP/s  %s\n",name,t, err<1e-5?"OK":("BAD(mse="+std::to_string(err)).c_str());fflush(
+1 error detected in the compilation of "/tmp/sweepV2.cu".
+build=2
+/bin/bash: line 124: /tmp/sweepV2: No such file or directory
+build=0
+=== validated block-shape sweep, N=4096 ===
+128x128 BK8 st3 8x8                          3.54 TFLOP/s  OK
+128x128 BK8 st4 8x8                          3.52 TFLOP/s  OK
+128x128 BK16 st3 8x8                         3.58 TFLOP/s  OK
+128x256 BK8 st4 8x8                          3.73 TFLOP/s  OK
+128x256 BK8 st3 8x8                          3.32 TFLOP/s  OK
+128x256 BK16 st3 8x8                         3.36 TFLOP/s  OK
+256x128 BK8 st4 8x8                          3.19 TFLOP/s  OK
+256x256 BK8 st3 8x8                          7.96 TFLOP/s  OK
+64x256 BK8 st4 8x8                           5.91 TFLOP/s  OK
+128x384 BK8 st3 8x8                          7.75 TFLOP/s  OK
+build=0
+build=0
+    double err=0,cnt=0; size_t stride=1+N/16;
+    const int rowsPerBlockWarps=THREADS/32/warpsX;
+          detected during instantiation of "void testK<BM,BN,BK,STAGES,THREADS>(int, int) [with BM=128, BN=128, BK=8, STAGES=4, THREADS=256]" at line 122
+build=0
+=== correct-thread block-size sweep, N=4096 (validated vs CPU) ===
+[128x128 BK8  st4 thr256 ]   3.22 TFLOP/s  CPU-MSE=5.93e-10 OK
+[128x256 BK8  st4 thr512 ]   2.18 TFLOP/s  CPU-MSE=2.27e+02 **BAD**
+[256x128 BK8  st4 thr512 ]   2.41 TFLOP/s  CPU-MSE=2.26e+02 **BAD**
+[256x256 BK8  st3 thr1024]   0.03 TFLOP/s  CPU-MSE=5.93e-10 OK
+[256x256 BK8  st4 thr1024]   0.04 TFLOP/s  CPU-MSE=5.93e-10 OK
+[256x256 BK16 st2 thr1024]   0.20 TFLOP/s  CPU-MSE=5.93e-10 OK
+[256x128 BK16 st3 thr512 ]   3.95 TFLOP/s  CPU-MSE=2.26e+02 **BAD**
+[128x256 BK16 st3 thr512 ]   3.84 TFLOP/s  CPU-MSE=2.27e+02 **BAD**
+[128x128 BK8  st3 thr256 ]   3.25 TFLOP/s  CPU-MSE=5.93e-10 OK
+[128x384 BK8  st3 thr512 ]   4.45 TFLOP/s  CPU-MSE=2.96e+02 **BAD**
+    const int rowsPerBlockWarps=512/32/warpsX;
+launch no error
+BAD[256,0] gpu=0 cpu=9.74894
+BAD[256,1] gpu=0 cpu=4.32766
+BAD[256,2] gpu=0 cpu=1.96065
+BAD[256,3] gpu=0 cpu=1.71082
+BAD[256,4] gpu=0 cpu=4.24543
+BAD[256,5] gpu=0 cpu=3.38666
+BAD[256,6] gpu=0 cpu=-1.91016
+BAD[256,7] gpu=0 cpu=2.9603
+BAD[256,8] gpu=0 cpu=2.61467
+BAD[256,9] gpu=0 cpu=0.877127
+BAD[256,10] gpu=0 cpu=-9.92962
+BAD[256,11] gpu=0 cpu=-4.31207
+BAD[256,12] gpu=0 cpu=1.63151
+BAD[256,13] gpu=0 cpu=-7.43794
+BAD[256,14] gpu=0 cpu=-6.98832
+BAD[256,15] gpu=0 cpu=-5.09667
+BAD[256,16] gpu=0 cpu=-8.4635
+BAD[256,17] gpu=0 cpu=-1.58636
+BAD[256,18] gpu=0 cpu=18.8678
+BAD[256,19] gpu=0 cpu=-13.5673
+maxerr2=1.37e+03 bad=20
+88:  dim3 block(THREADS),grid((N+BN-1)/BN,(N+BM-1)/BM);
+    double err=0,cnt=0; size_t stride=1+N/16;
+    const int rowsPerBlockWarps=THREADS/32/warpsX;
+          detected during instantiation of "void testK<BM,BN,BK,STAGES,THREADS>(int, int) [with BM=128, BN=128, BK=8, STAGES=4, THREADS=256]" at line 122
+build=0
+=== correct-thread block-size sweep, N=4096 (validated vs CPU) ===
+[128x128 BK8  st4 thr256 ]   3.52 TFLOP/s  CPU-MSE=5.93e-10 OK
+[128x256 BK8  st4 thr512 ]   2.66 TFLOP/s  CPU-MSE=5.93e-10 OK
+[256x128 BK8  st4 thr512 ]   2.23 TFLOP/s  CPU-MSE=5.93e-10 OK
+[256x256 BK8  st3 thr1024]   0.04 TFLOP/s  CPU-MSE=5.93e-10 OK
+[256x256 BK8  st4 thr1024]   0.05 TFLOP/s  CPU-MSE=5.93e-10 OK
+[256x256 BK16 st2 thr1024]   0.09 TFLOP/s  CPU-MSE=5.93e-10 OK
+[256x128 BK16 st3 thr512 ]   6.42 TFLOP/s  CPU-MSE=5.93e-10 OK
+[128x256 BK16 st3 thr512 ]   6.67 TFLOP/s  CPU-MSE=5.93e-10 OK
+[128x128 BK8  st3 thr256 ]   7.01 TFLOP/s  CPU-MSE=5.93e-10 OK
+[128x384 BK8  st3 thr512 ]   5.11 TFLOP/s  CPU-MSE=5.93e-10 OK
+    const int rowsPerBlockWarps=THREADS/32/warpsX;
+          detected during instantiation of "double bench<BM,BN,BK,STAGES,THREADS>(const float *, const float *, float *, int, int) [with BM=128, BN=128, BK=8, STAGES=3, THREADS=256]" at line 102
+build=0
+=== interleaved best-of-8, N=4096 ===
+128x128 BK8 st3              best 4.63 TFLOP/s
+128x128 BK8 st4              best 2.85 TFLOP/s
+128x128 BK16 st3             best 2.33 TFLOP/s
+128x128 BK16 st4             best 3.13 TFLOP/s
+128x256 BK16 st3             best 3.66 TFLOP/s
+128x256 BK8 st4              best 3.59 TFLOP/s
+256x128 BK16 st3             best 4.93 TFLOP/s
+256x128 BK8 st4              best 5.56 TFLOP/s
+256x256 BK16 st2             best 0.07 TFLOP/s
+256x128 BK16 st4             best 6.21 TFLOP/s
+/tmp/sweepBest.cu(19): warning #177-D: variable "rowsPerBlockWarps" was declared but never referenced
+    const int rowsPerBlockWarps=THREADS/32/warpsX;
+              ^
+          detected during instantiation of "double bench<BM,BN,BK,STAGES,THREADS>(const float *, const float *, float *, int, int) [with BM=128, BN=128, BK=8, STAGES=3, THREADS=256]" at line 102
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+built
+=== N=8192 best-of-20 (run twice back-to-back for stability) ===
+/tmp/sweepBest.cu(19): warning #177-D: variable "rowsPerBlockWarps" was declared but never referenced
+    const int rowsPerBlockWarps=THREADS/32/warpsX;
+              ^
+          detected during instantiation of "double bench<BM,BN,BK,STAGES,THREADS>(const float *, const float *, float *, int, int) [with BM=128, BN=128, BK=8, STAGES=3, THREADS=256]" at line 102
+
+Remark: The warnings can be suppressed with "-diag-suppress <warning-number>"
+
+built
+=== N=8192 best-of-20 (run twice back-to-back for stability) ===
+=== quick N=4096 and N=2048, best-of-5 (runs configs ordered to reduce drift) ===
+=== interleaved best-of-5, N=4096 ===
+128x128 BK8 st3              best 3.81 TFLOP/s
+128x128 BK8 st4              best 3.82 TFLOP/s
+128x128 BK16 st3             best 3.87 TFLOP/s
+128x128 BK16 st4             best 3.05 TFLOP/s
+128x256 BK16 st3             best 4.54 TFLOP/s
+128x256 BK8 st4              best 4.55 TFLOP/s
+256x128 BK16 st3             best 4.30 TFLOP/s
+256x128 BK8 st4              best 2.74 TFLOP/s
+256x256 BK16 st2             best 0.06 TFLOP/s
+256x128 BK16 st4             best 2.74 TFLOP/s
+-----
+=== interleaved best-of-5, N=2048 ===
+128x128 BK8 st3              best 3.04 TFLOP/s
+128x128 BK8 st4              best 3.04 TFLOP/s
+128x128 BK16 st3             best 3.62 TFLOP/s
+128x128 BK16 st4             best 2.46 TFLOP/s
+128x256 BK16 st3             best 3.05 TFLOP/s
+128x256 BK8 st4              best 2.45 TFLOP/s
+256x128 BK16 st3             best 2.43 TFLOP/s
+256x128 BK8 st4              best 2.40 TFLOP/s
+256x256 BK16 st2             best 0.10 TFLOP/s
+256x128 BK16 st4             best 5.90 TFLOP/s
+-----
+build=0
+###### N=2048 ######
+=== ratio vs cuBLAS, N=2048 (it=15/launch) ===
+  128x128 BK16 st3       rep0  MINE=2.86 cuBLAS=4.93 ratio=0.58
+  128x128 BK16 st3       rep1  MINE=3.16 cuBLAS=6.57 ratio=0.48
+  128x128 BK16 st3       rep2  MINE=3.64 cuBLAS=6.30 ratio=0.58
+  ---
+  128x256 BK16 st3       rep0  MINE=3.61 cuBLAS=6.58 ratio=0.55
+  128x256 BK16 st3       rep1  MINE=3.61 cuBLAS=6.31 ratio=0.57
+  128x256 BK16 st3       rep2  MINE=3.56 cuBLAS=7.27 ratio=0.49
+  ---
+  256x128 BK16 st3       rep0  MINE=3.82 cuBLAS=7.23 ratio=0.53
+  256x128 BK16 st3       rep1  MINE=3.91 cuBLAS=7.27 ratio=0.54
+  256x128 BK16 st3       rep2  MINE=3.82 cuBLAS=7.28 ratio=0.52
+  ---
+  128x128 BK8 st3        rep0  MINE=4.25 cuBLAS=7.26 ratio=0.59
+  128x128 BK8 st3        rep1  MINE=4.16 cuBLAS=7.23 ratio=0.58
+  128x128 BK8 st3        rep2  MINE=4.16 cuBLAS=7.29 ratio=0.57
+  ---
+###### N=4096 ######
+=== ratio vs cuBLAS, N=4096 (it=10/launch) ===
+  128x128 BK16 st3       rep0  MINE=5.22 cuBLAS=5.52 ratio=0.95
+  128x128 BK16 st3       rep1  MINE=4.19 cuBLAS=7.33 ratio=0.57
+  128x128 BK16 st3       rep2  MINE=5.38 cuBLAS=7.34 ratio=0.73
+  ---
+  128x256 BK16 st3       rep0  MINE=4.84 cuBLAS=7.26 ratio=0.67
+  128x256 BK16 st3       rep1  MINE=4.86 cuBLAS=7.28 ratio=0.67
+  128x256 BK16 st3       rep2  MINE=4.76 cuBLAS=7.25 ratio=0.66
+  ---
+  256x128 BK16 st3       rep0  MINE=5.00 cuBLAS=10.83 ratio=0.46
+  256x128 BK16 st3       rep1  MINE=6.76 cuBLAS=10.84 ratio=0.62
+  256x128 BK16 st3       rep2  MINE=6.76 cuBLAS=10.84 ratio=0.62
+  ---
+  128x128 BK8 st3        rep0  MINE=7.47 cuBLAS=10.83 ratio=0.69
+  128x128 BK8 st3        rep1  MINE=7.58 cuBLAS=10.82 ratio=0.70
+  128x128 BK8 st3        rep2  MINE=7.47 cuBLAS=10.84 ratio=0.69
+  ---
+nvcc -O3 -std=c++14 -arch=sm_80 src/main.cu src/gemm.cu -o gemm
+=== harness ===
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Perf: N=2048 iters=1100  total time [s]: 3.06
+Performance: 6165.87 GFLOP/s
+/tmp/final.cu(28): error: identifier "cudaSync" is undefined
+      cudaEventRecord(x);cudaSync();for(int i=0;i<it;i++)launchGemm(A,B,C,N);cudaEventRecord(y);cudaEventSynchronize(y);
+1 error detected in the compilation of "/tmp/final.cu".
+/bin/bash: line 39: /tmp/final: No such file or directory
+/bin/bash: line 39: /tmp/final: No such file or directory
+/bin/bash: line 39: /tmp/final: No such file or directory
+/bin/bash: line 39: /tmp/final: No such file or directory
+build=0
+N=1024 CORRECTNESS MSE=3.98e-11 OK
+N=1024 best MINE=3.36 cuBLAS=0.21 ratio=16.02
+N=2048 CORRECTNESS MSE=1.43e-10 OK
+N=2048 best MINE=3.82 cuBLAS=1.48 ratio=2.57
+N=4096 CORRECTNESS MSE=5.90e-10 OK
+N=4096 best MINE=4.51 cuBLAS=4.68 ratio=0.96
+N=8192 CORRECTNESS MSE=2.38e-09 OK
+N=8192 best MINE=3.60 cuBLAS=6.92 ratio=0.52
+nvcc -O3 -std=c++14 -arch=sm_80 src/main.cu src/gemm.cu -o gemm
+=== clean build OK ===
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Perf: N=2048 iters=1750  total time [s]: 3.03
+Performance: 9918.25 GFLOP/s
+nvcc -O3 -std=c++14 -arch=sm_80 src/main.cu src/gemm.cu -o gemm
+  N=128   MSE=6.173891e-13  ok
+  N=200   MSE=1.449355e-12  ok
+  N=256   MSE=2.378347e-12  ok
+  N=257   MSE=2.417883e-12  ok
+  N=384   MSE=5.249459e-12  ok
+Mean Squared Error: 5.249459e-12
+Perf: N=2048 iters=1350  total time [s]: 3.06
+error: failed to run prompt: loop.max_steps_exceeded: Turn exceeded maxSteps=120. If max_steps_per_turn is too small, raise it in config.toml (loop_control.max_steps_per_turn), or run "/update-config" to update it, then "/reload".
+See log: /problem/.kimi-code-home/logs/kimi-code.log

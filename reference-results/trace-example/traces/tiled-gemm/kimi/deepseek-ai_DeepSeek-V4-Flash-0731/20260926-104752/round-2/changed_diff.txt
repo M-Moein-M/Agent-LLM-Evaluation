@@ -1,0 +1,289 @@
+Only in /tmp/4327889.cluster/tmp.Gumo3FhspW/work/deepseek-ai_DeepSeek-V4-Flash-0731/round-2/tiled-gemm/: agent.kimi-wire
+Only in /tmp/4327889.cluster/tmp.Gumo3FhspW/work/deepseek-ai_DeepSeek-V4-Flash-0731/round-2/tiled-gemm/: agent.stderr.log
+Only in /tmp/4327889.cluster/tmp.Gumo3FhspW/work/deepseek-ai_DeepSeek-V4-Flash-0731/round-2/tiled-gemm/: agent.stream.jsonl
+Only in /tmp/4327889.cluster/tmp.Gumo3FhspW/work/deepseek-ai_DeepSeek-V4-Flash-0731/round-2/tiled-gemm/: .eval
+Only in /tmp/4327889.cluster/tmp.Gumo3FhspW/work/deepseek-ai_DeepSeek-V4-Flash-0731/round-2/tiled-gemm/: gemm
+Only in /tmp/4327889.cluster/tmp.Gumo3FhspW/work/deepseek-ai_DeepSeek-V4-Flash-0731/round-2/tiled-gemm/: gemm_bench
+diff -ru '--exclude=.git' <repo>/problems/tiled-gemm/Makefile /tmp/4327889.cluster/tmp.Gumo3FhspW/work/deepseek-ai_DeepSeek-V4-Flash-0731/round-2/tiled-gemm/Makefile
+--- <repo>/problems/tiled-gemm/Makefile	2026-07-05 23:48:43.000000000 +0200
++++ /tmp/4327889.cluster/tmp.Gumo3FhspW/work/deepseek-ai_DeepSeek-V4-Flash-0731/round-2/tiled-gemm/Makefile	2026-09-26 11:19:15.664956764 +0200
+@@ -1,7 +1,8 @@
+ NVCC      ?= nvcc
+ NVCCFLAGS ?= -O3 -std=c++14
+-# Optional: override to target a specific GPU, e.g. ARCH="-arch=sm_80"
+-ARCH      ?=
++# Tuned for the NVIDIA A40 (Ampere, sm_80). Override to target a different GPU:
++#   make ARCH="-arch=sm_90"
++ARCH      ?= -arch=sm_80
+ 
+ gemm: src/main.cu src/gemm.cu src/gemm.cuh
+ 	$(NVCC) $(NVCCFLAGS) $(ARCH) src/main.cu src/gemm.cu -o gemm
+@@ -9,4 +10,4 @@
+ clean:
+ 	rm -f gemm
+ 
+-.PHONY: clean
++.PHONY: clean
+\ No newline at end of file
+Only in <repo>/problems/tiled-gemm/: PROMPT.md
+Only in /tmp/4327889.cluster/tmp.Gumo3FhspW/work/deepseek-ai_DeepSeek-V4-Flash-0731/round-2/tiled-gemm/: solution.json
+diff -ru '--exclude=.git' <repo>/problems/tiled-gemm/src/gemm.cu /tmp/4327889.cluster/tmp.Gumo3FhspW/work/deepseek-ai_DeepSeek-V4-Flash-0731/round-2/tiled-gemm/src/gemm.cu
+--- <repo>/problems/tiled-gemm/src/gemm.cu	2026-07-05 23:48:43.000000000 +0200
++++ /tmp/4327889.cluster/tmp.Gumo3FhspW/work/deepseek-ai_DeepSeek-V4-Flash-0731/round-2/tiled-gemm/src/gemm.cu	2026-09-26 12:24:45.375234202 +0200
+@@ -1,47 +1,224 @@
+ #include "gemm.cuh"
+ 
+ #include <cuda_runtime.h>
++#include <cuda_pipeline.h>
+ 
+-// Edge length of a square thread-block tile. Each block cooperatively loads a
+-// TILE x TILE sub-block of A and B into shared memory, multiplies them, and
+-// accumulates into the corresponding tile of C.
+-#define TILE 16
+-
+-// Classic shared-memory tiled matrix multiply. The kernel is written to handle
+-// matrices whose dimensions are not a multiple of TILE: every global load is
+-// guarded so out-of-range elements read as zero, and the final store is masked
+-// by `row < N && col < N`.
+-__global__ void gemmKernel(const float* A, const float* B, float* C, int N) {
+-    __shared__ float As[TILE][TILE];
+-    __shared__ float Bs[TILE][TILE];
+-
+-    const int row = blockIdx.y * TILE + threadIdx.y;
+-    const int col = blockIdx.x * TILE + threadIdx.x;
+-    const int numTiles = (N + TILE - 1) / TILE;
++// ===========================================================================
++//  Single-precision tiled GEMM tuned for the NVIDIA A40 (Ampere, sm_80).
++//
++//  launchGemm() dispatches based on matrix alignment:
++//
++//    * gemmFastKernel -- N % 4 == 0. 128x128 block tile, 8x8 register
++//      blocking, a synchronous transposing load into an A-shared tile that is
++//      K-major, and cp.async multi-stage loads for B. Both A and B are then
++//      read back from shared as float4 accesses: B is fully bank-conflict-free
++//      and A is at most mildly (2-way) conflicted, and instruction pressure
++//      stays low because both operands arrive vectorized. Ragged N is handled
++//      by the guarded load path that zero-fills out-of-range entries -- a
++//      correct product regardless of whether N is a multiple of the tile.
++//
++//    * gemmGeneralKernel -- any N (in particular N % 4 != 0, where float4
++//      global accesses would be misaligned). A guarded, corrected tiled
++//      kernel for correctness on odd sizes.
++//
++//  Why A is stored transposed (As[k][row]): the thread's 8 accumulator rows
++//  then read 8 CONSECUTIVE shared addresses at a fixed k, so a float4 read
++//  covers 4 rows; this keeps the read vectorizable. cp.async writes
++//  contiguous bytes, so it cannot transpose during the copy; therefore A is
++//  filled by a short synchronous global->shared transpose (global float4 over
++//  k -> 4 scalar stores), while B keeps its natural col-major-in-shared
++//  layout and IS loaded with cp.async for latency hiding.
++// ===========================================================================
++
++// ---- fast kernel geometry ------------------------------------------------
++#define FAST_BM 128
++#define FAST_BN 128
++#define FAST_BK 8        // K-slice per shared buffer
++#define FAST_THREADS 256
++#define FAST_STAGES 3    // # of shared buffers (cp.async pipeline depth)
++
++__global__ void __launch_bounds__(FAST_THREADS)
++gemmFastKernel(const float* __restrict__ A,
++               const float* __restrict__ B,
++               float* __restrict__ C,
++               int N) {
++    // dynamic shared: As[STAGES][BK][BM] (K-major / transposed) + Bs[STAGES][BK][BN]
++    extern __shared__ float smem[];
++    float (*As)[FAST_BK][FAST_BM] =
++        reinterpret_cast<float (*)[FAST_BK][FAST_BM]>(smem);
++    float (*Bs)[FAST_BK][FAST_BN] =
++        reinterpret_cast<float (*)[FAST_BK][FAST_BN]>(smem + FAST_STAGES * FAST_BK * FAST_BM);
++
++    const int tid   = threadIdx.x;
++    const int warp  = tid >> 5;      // 0..7
++    const int lane  = tid & 31;
++    const int ty    = lane >> 2;     // 8 thread-rows
++    const int tx    = lane & 3;      // 4 thread-cols
++    const int warpR = warp >> 2;     // warp grid 2 x 4
++    const int warpC = warp & 3;
++    const int rLo   = warpR * 64 + ty * 8;    // within-block row of acc tile
++    const int cLo   = warpC * 32 + tx * 8;    // within-block col of acc tile
++
++    const int row0 = blockIdx.y * FAST_BM;
++    const int col0 = blockIdx.x * FAST_BN;
++    const int nKT  = (N + FAST_BK - 1) / FAST_BK;
++
++    float acc[8][8];
++#pragma unroll
++    for (int i = 0; i < 8; ++i)
++#pragma unroll
++        for (int j = 0; j < 8; ++j) acc[i][j] = 0.0f;
++
++    // load the K-slice beginning at global col k0 into shared `slot`.
++    // A: synchronous global float4 (over k) -> transposed shared stores.
++    // B: cp.async .16 along columns.
++    auto loadStage = [&](int k0, int slot) {
++        // ---- A tile (FAST_BM rows x FAST_BK cols) ---------------------
++#pragma unroll
++        for (int i = 0; i < (FAST_BM * FAST_BK / 4 + FAST_THREADS - 1) / FAST_THREADS; ++i) {
++            const int idx = tid + i * FAST_THREADS;
++            if (idx < FAST_BM * FAST_BK / 4) {
++                const int r  = idx / (FAST_BK / 4);      // 0..127 row
++                const int kf = idx % (FAST_BK / 4);      // which float4 in K
++                const int gr = row0 + r;
++                const int gc = k0 + kf * 4;
++                float4 v;
++                if (gr < N && gc + 3 < N) v = *reinterpret_cast<const float4*>(&A[gr * N + gc]);
++                else {
++                    v.x = (gr < N && gc + 0 < N) ? A[gr * N + gc + 0] : 0.0f;
++                    v.y = (gr < N && gc + 1 < N) ? A[gr * N + gc + 1] : 0.0f;
++                    v.z = (gr < N && gc + 2 < N) ? A[gr * N + gc + 2] : 0.0f;
++                    v.w = (gr < N && gc + 3 < N) ? A[gr * N + gc + 3] : 0.0f;
++                }
++                As[slot][kf * 4 + 0][r] = v.x;
++                As[slot][kf * 4 + 1][r] = v.y;
++                As[slot][kf * 4 + 2][r] = v.z;
++                As[slot][kf * 4 + 3][r] = v.w;
++            }
++        }
++        // ---- B tile (FAST_BK rows x FAST_BN cols), cp.async -----------
++#pragma unroll
++        for (int i = 0; i < (FAST_BK * FAST_BN / 4 + FAST_THREADS - 1) / FAST_THREADS; ++i) {
++            const int idx = tid + i * FAST_THREADS;
++            if (idx < FAST_BK * FAST_BN / 4) {
++                const int k  = idx / (FAST_BN / 4);
++                const int cf = idx % (FAST_BN / 4);
++                const int gr = k0 + k;
++                const int gc = col0 + cf * 4;
++                if (gr < N && gc + 3 < N)
++                    __pipeline_memcpy_async(&Bs[slot][k][cf * 4], &B[gr * N + gc], 16);
++                else {
++                    Bs[slot][k][cf * 4 + 0] = (gr < N && gc + 0 < N) ? B[gr * N + gc + 0] : 0.0f;
++                    Bs[slot][k][cf * 4 + 1] = (gr < N && gc + 1 < N) ? B[gr * N + gc + 1] : 0.0f;
++                    Bs[slot][k][cf * 4 + 2] = (gr < N && gc + 2 < N) ? B[gr * N + gc + 2] : 0.0f;
++                    Bs[slot][k][cf * 4 + 3] = (gr < N && gc + 3 < N) ? B[gr * N + gc + 3] : 0.0f;
++                }
++            }
++        }
++    };
++
++    // ---- prologue: prime FAST_STAGES-1 slices ----------------------------
++    int issued = 0;
++    while (issued < nKT && issued < FAST_STAGES - 1) {
++        loadStage(issued * FAST_BK, issued % FAST_STAGES);
++        __pipeline_commit();
++        ++issued;
++    }
++
++    // ---- main loop -------------------------------------------------------
++    for (int t = 0; t < nKT; ++t) {
++        __pipeline_wait_prior((issued - 1) - t);   // this slice's group ready
++        __syncthreads();
++
++        if (issued < nKT) {
++            loadStage(issued * FAST_BK, issued % FAST_STAGES);
++            __pipeline_commit();
++            ++issued;
++        }
++
++        const int slot = t % FAST_STAGES;
++
++        // inner product for this K-slice; conflict-free float4 reads
++#pragma unroll
++        for (int k = 0; k < FAST_BK; ++k) {
++            float4 a0 = *reinterpret_cast<const float4*>(&As[slot][k][rLo]);
++            float4 a1 = *reinterpret_cast<const float4*>(&As[slot][k][rLo + 4]);
++            float av[8] = {a0.x, a0.y, a0.z, a0.w, a1.x, a1.y, a1.z, a1.w};
++            float4 b0 = *reinterpret_cast<const float4*>(&Bs[slot][k][cLo]);
++            float4 b1 = *reinterpret_cast<const float4*>(&Bs[slot][k][cLo + 4]);
++            float bv[8] = {b0.x, b0.y, b0.z, b0.w, b1.x, b1.y, b1.z, b1.w};
++#pragma unroll
++            for (int i = 0; i < 8; ++i)
++#pragma unroll
++                for (int j = 0; j < 8; ++j)
++                    acc[i][j] += av[i] * bv[j];
++        }
++
++        __syncthreads();   // done reading this slot before it is reused
++    }
++
++    // ---- epilogue: store 8x8 block --------------------------------------
++    const int gR0 = row0 + rLo;
++    const int gC0 = col0 + cLo;
++#pragma unroll
++    for (int i = 0; i < 8; ++i) {
++        const int r = gR0 + i;
++        if (r >= N) continue;
++#pragma unroll
++        for (int j = 0; j < 8; ++j) {
++            const int c = gC0 + j;
++            if (c < N) C[r * N + c] = acc[i][j];
++        }
++    }
++}
++
++// ---------------------------------------------------------------------------
++// General guarded tiled kernel for arbitrary N (used when N % 4 != 0).
++// ---------------------------------------------------------------------------
++#define G_TILE 16
++
++__global__ void gemmGeneralKernel(const float* __restrict__ A,
++                                  const float* __restrict__ B,
++                                  float* __restrict__ C, int N) {
++    __shared__ float GAs[G_TILE][G_TILE];
++    __shared__ float GBs[G_TILE][G_TILE];
++
++    const int row = blockIdx.y * G_TILE + threadIdx.y;
++    const int col = blockIdx.x * G_TILE + threadIdx.x;
++    const int numTiles = (N + G_TILE - 1) / G_TILE;
+ 
+     float acc = 0.0f;
+     for (int t = 0; t < numTiles; ++t) {
+-        const int aCol = t * TILE + threadIdx.x;
+-        const int bRow = t * TILE + threadIdx.y;
+-
+-        As[threadIdx.y][threadIdx.x] =
++        const int aCol = t * G_TILE + threadIdx.x;
++        const int bRow = t * G_TILE + threadIdx.y;
++        GAs[threadIdx.y][threadIdx.x] =
+             (row < N && aCol < N) ? A[row * N + aCol] : 0.0f;
+-        Bs[threadIdx.y][threadIdx.x] =
++        GBs[threadIdx.y][threadIdx.x] =
+             (bRow < N && col < N) ? B[bRow * N + col] : 0.0f;
+         __syncthreads();
+-
+ #pragma unroll
+-        for (int k = 0; k < TILE; ++k)
+-            acc += As[threadIdx.y][k] * Bs[k][threadIdx.x];
++        for (int k = 0; k < G_TILE; ++k)
++            acc += GAs[threadIdx.y][k] * GBs[k][threadIdx.x];
+         __syncthreads();
+     }
+-
+-    if (row < N && col < N)
+-        C[row * N + col] = acc;
++    if (row < N && col < N) C[row * N + col] = acc;
+ }
+ 
++// ===========================================================================
+ void launchGemm(const float* dA, const float* dB, float* dC, int N) {
+-    dim3 block(TILE, TILE);
+-    dim3 grid(N / TILE, N / TILE);  // one block per output tile
+-    gemmKernel<<<grid, block>>>(dA, dB, dC, N);
+-}
++    if (N % 4 == 0) {
++        dim3 block(FAST_THREADS);
++        dim3 grid((N + FAST_BM - 1) / FAST_BM, (N + FAST_BN - 1) / FAST_BN);
++        const size_t shmem =
++            (size_t)(FAST_STAGES * FAST_BK * FAST_BM +
++                     FAST_STAGES * FAST_BK * FAST_BN) * sizeof(float);
++        cudaFuncSetAttribute(gemmFastKernel,
++                             cudaFuncAttributeMaxDynamicSharedMemorySize,
++                             (int)shmem);
++        gemmFastKernel<<<grid, block, shmem>>>(dA, dB, dC, N);
++    } else {
++        dim3 block(G_TILE, G_TILE);
++        dim3 grid((N + G_TILE - 1) / G_TILE, (N + G_TILE - 1) / G_TILE);
++        gemmGeneralKernel<<<grid, block>>>(dA, dB, dC, N);
++    }
++}
+\ No newline at end of file

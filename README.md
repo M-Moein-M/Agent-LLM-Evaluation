@@ -38,9 +38,10 @@ Pass@1 and token cost of the evaluated models and agents, from the scripts in
 | ![recovery vs pass@1](reference-results/figures/22e_recovery_vs_pass1.png) | ![cost split](reference-results/figures/16d_cost_split_by_model.png) |
 | share of first-try failures solved by attempt 5, against pass@1 | token cost per solved problem, split into input and output |
 
-More figures are in `reference-results/figures/`. Full traces are release assets, see
-`reference-results/README.md`. Give a figure to your coding agent and ask it to rebuild it from your
-own `results/runs.jsonl`.
+More figures are in `reference-results/figures/`. The agent sessions behind the pass@1 matrix are in the
+[traces dataset on Hugging Face](https://huggingface.co/datasets/m-moein-m/Agent-LLM-Evaluation-Traces),
+and a small sample is in `reference-results/trace-example/`. Give a figure to your coding agent and ask
+it to rebuild it from your own `results/runs.jsonl`.
 
 ## Quickstart
 
