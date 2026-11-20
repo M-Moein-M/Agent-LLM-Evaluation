@@ -95,4 +95,4 @@ problem and its grader, runs the endpoint test, and keeps AGENT.md up to date.
 
 
 ## Limitations
-- During the code generation (not the measurement phase), the agnents could work on problems on the same GPU (sometimes 5 agents working with the same A40 GPU). This resulted in overloaded GPU which could interfere with the numbers that the agent retrieved from the runs. Like its FLOPs measurements to check the peroformance of the code. However, during the final measurement, the solutions were running only one at a time on the GPU.
+- During the code generation (not the measurement phase), the agents could work on problems on the same GPU (sometimes 5 agents working with the same A40 GPU). This resulted in overloaded GPU which could interfere with the numbers that the agent retrieved from the runs. Like its FLOPs measurements to check the performance of the code. However, during the final measurement, the solutions were running only one at a time on the GPU.
