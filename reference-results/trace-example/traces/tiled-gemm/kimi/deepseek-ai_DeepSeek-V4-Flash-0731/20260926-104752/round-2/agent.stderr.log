@@ -360,7 +360,7 @@ BM=64 BN=128 BK=8 thr=256 st=4: 3.43 TFLOP/s
           hardware maximum of 12. This kernel's theoretical occupancy (33.3%) is limited by the number of required      
     Average DRAM Active Cycles       cycle    805370.67
     Total DRAM Elapsed Cycles        cycle    891680768
--rw-r--r-- 1 ${USER} <project> 915324 Sep 26 11:32 /tmp/profp2.ncu-rep
+-rw-r--r-- 1 evaluser evalproject 915324 Sep 26 11:32 /tmp/profp2.ncu-rep
 "ID","Process ID","Process Name","Host Name","Kernel Name","Context","Stream","Block Size","Grid Size","Device","CC","Section Name","Metric Name","Metric Unit","Metric Value","Rule Name","Rule Type","Rule Description","Estimated Speedup Type","Estimated Speedup"
 "0","1174","profp","127.0.0.1","void kTA<(int)128, (int)128, (int)8, (int)256, (int)4>(const float *, const float *, float *, int)","1","7","(256, 1, 1)","(1024, 1, 1)","0","8.6","GPU Speed Of Light Throughput","DRAM Frequency","cycle/nsecond","7.24",
 "0","1174","profp","127.0.0.1","void kTA<(int)128, (int)128, (int)8, (int)256, (int)4>(const float *, const float *, float *, int)","1","7","(256, 1, 1)","(1024, 1, 1)","0","8.6","GPU Speed Of Light Throughput","SM Frequency","cycle/nsecond","1.30",

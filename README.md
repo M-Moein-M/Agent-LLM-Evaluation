@@ -51,7 +51,8 @@ Download the dataset from Hugging Face, extract all rounds and open them in the 
 pip install pyarrow huggingface_hub
 hf download m-moein-m/Agent-LLM-Evaluation-Traces --repo-type dataset --local-dir hf-traces
 python3 tools/trace-vis/hf_extract.py --in hf-traces/data --out hf-eval-traces
-tools/trace-vis/build.sh && tools/trace-vis/run.sh -w hf-eval-traces --runs results/runs.jsonl
+tools/trace-vis/build.sh        # once, builds tools/trace-vis/trace-vis.sif (needs Apptainer)
+tools/trace-vis/run.sh -w hf-eval-traces --runs results/runs.jsonl
 ```
 
 Then open http://localhost:8080 (the script prints the URL and uses the next free port if 8080 is taken).
@@ -91,3 +92,7 @@ python3 tools/summarize.py
 Point your agent at [AGENT.md](AGENT.md), which describes what is where, and give it the prompt in
 [docs/EXTEND_PROMPT.md](docs/EXTEND_PROMPT.md) with a description of your problem. It creates the
 problem and its grader, runs the endpoint test, and keeps AGENT.md up to date.
+
+
+## Limitations
+- During the code generation (not the measurement phase), the agnents could work on problems on the same GPU (sometimes 5 agents working with the same A40 GPU). This resulted in overloaded GPU which could interfere with the numbers that the agent retrieved from the runs. Like its FLOPs measurements to check the peroformance of the code. However, during the final measurement, the solutions were running only one at a time on the GPU.

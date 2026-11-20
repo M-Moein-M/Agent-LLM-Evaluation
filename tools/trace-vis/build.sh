@@ -32,4 +32,7 @@ apptainer build --fakeroot "$SIF" "$DEF"
 
 echo
 echo "built: $(readlink -f "$SIF")"
-echo "start it with: ./run.sh"
+echo "start it on this repo's traces:"
+echo "  $(pwd)/run.sh"
+echo "start it on the extracted Hugging Face traces (hf_extract.py output):"
+echo "  $(pwd)/run.sh -w <path to hf-eval-traces> --runs results/runs.jsonl"

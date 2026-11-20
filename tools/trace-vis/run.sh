@@ -34,7 +34,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-[[ -f "$SIF" ]] || { echo "error: $SIF not found — run ./build.sh first" >&2; exit 1; }
+[[ -f "$SIF" ]] || { echo "error: $SIF not found — run $HERE/build.sh first" >&2; exit 1; }
 [[ -d "$WORKSPACE/traces" ]] || {
     echo "error: $WORKSPACE has no traces/ — pass -w /path/to/repo" >&2; exit 1; }
 
