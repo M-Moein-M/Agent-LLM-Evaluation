@@ -222,7 +222,7 @@ result and the token cost are printed and saved to `tests/endpoint/last-run.md`.
   python3 tools/trace-vis/hf_extract.py --in hf-traces/data --out hf-eval-traces
   tools/trace-vis/run.sh -w hf-eval-traces --runs results/runs.jsonl
   ```
-  `hf-traces/` is the download and `hf-eval-traces/` the extracted rounds (about 360 MB in full), both
+  `hf-traces/` is the download and `hf-eval-traces/` the extracted rounds (about 400 MB in full), both
   gitignored. Filters: `--problem`, `--harness`, `--model`, `--passed yes|no` (repeatable) and `--limit N`.
   The rows hold normalized messages, so the timeline has no harness log files.
 

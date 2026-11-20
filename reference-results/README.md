@@ -12,7 +12,9 @@ folder is optional.** Delete it and the harness, tests, serving stack and tools 
 
 ## Full traces
 
-The 1,053 sessions behind the pass@1 matrix (`figures/05_pass_matrix.png`) are on Hugging Face:
+1,179 of the sessions behind the pass@1 matrix (`figures/05_pass_matrix.png`) are on Hugging Face. Two
+models are left out: Llama-3.3-70B (it performed poorly, 0 passes) and Claude Opus (terms-of-use
+issues):
 [m-moein-m/Agent-LLM-Evaluation-Traces](https://huggingface.co/datasets/m-moein-m/Agent-LLM-Evaluation-Traces).
 Each row is one round with the full message history, tool calls, reasoning where recorded, and the
 checker result. Account names, hosts and addresses are redacted. Rounds outside that population (older
